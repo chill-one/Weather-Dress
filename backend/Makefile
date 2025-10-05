@@ -1,22 +1,28 @@
-VENV=.venv
-PY=$(VENV)/bin/python
-PIP=$(VENV)/bin/pip
+SHELL := /bin/sh
 
-.PHONY: venv install dev run test fmt lint clean
+VENV ?= .venv
+PY   := $(VENV)/bin/python
+PIP  := $(VENV)/bin/pip
+ENV  ?= dev
+FRONTEND_ORIGIN ?= http://localhost:3000
 
-venv:
+# create the venv if missing
+$(VENV)/bin/python:
 	python3 -m venv $(VENV)
 
-install: venv
-	$(PIP) install -U uv
-	$(VENV)/bin/uv pip install -e ".[dev,ml]"
+venv: $(VENV)/bin/python
 
-dev: run
+install: venv
+	$(PIP) install -U pip uv
+	# try uv (fast); fall back to pip if uv isn't present
+	$(VENV)/bin/uv pip install -e ".[dev,ml]" || $(PIP) install -e ".[dev,ml]"
+
 run:
-	ENV=dev FRONTEND_ORIGIN=http://localhost:3000 uvicorn app.main:app --reload
+	ENV=$(ENV) FRONTEND_ORIGIN=$(FRONTEND_ORIGIN) \
+	$(PY) -m uvicorn app.main:app --reload
 
 test:
-	$(VENV)/bin/pytest -q
+	$(PY) -m pytest -q
 
 fmt:
 	$(VENV)/bin/black app tests
