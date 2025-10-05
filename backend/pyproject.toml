@@ -1,0 +1,56 @@
+[project]
+name = "weather-outfit-backend"
+version = "0.1.0"
+description = "FastAPI backend for weather → outfit recommendations"
+requires-python = ">=3.10"
+dependencies = [
+  "fastapi",
+  "uvicorn[standard]",
+  "httpx",
+  "python-dotenv",
+  "pydantic-settings",
+  "redis>=5",
+  "supabase",
+  "asyncpg",
+  "orjson",
+  "tenacity",
+  # ML / personalization
+  "scikit-learn",
+  "numpy",
+  "pandas",
+  "joblib",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest",
+  "pytest-asyncio",
+  "httpx[http2]",
+  "ruff",
+  "mypy",
+  "black",
+  "types-redis",
+  "types-requests",
+]
+ml = []  # keep for future split if needed
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+addopts = "-q"
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+src = ["app"]
+
+[tool.mypy]
+python_version = "3.10"
+strict = true
+plugins = []
+mypy_path = "app"
+exclude = ["tests/"]
+
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"

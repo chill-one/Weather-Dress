@@ -1,0 +1,29 @@
+Metadata-Version: 2.4
+Name: weather-outfit-backend
+Version: 0.1.0
+Summary: FastAPI backend for weather → outfit recommendations
+Requires-Python: >=3.10
+Requires-Dist: fastapi
+Requires-Dist: uvicorn[standard]
+Requires-Dist: httpx
+Requires-Dist: python-dotenv
+Requires-Dist: pydantic-settings
+Requires-Dist: redis>=5
+Requires-Dist: supabase
+Requires-Dist: asyncpg
+Requires-Dist: orjson
+Requires-Dist: tenacity
+Requires-Dist: scikit-learn
+Requires-Dist: numpy
+Requires-Dist: pandas
+Requires-Dist: joblib
+Provides-Extra: dev
+Requires-Dist: pytest; extra == "dev"
+Requires-Dist: pytest-asyncio; extra == "dev"
+Requires-Dist: httpx[http2]; extra == "dev"
+Requires-Dist: ruff; extra == "dev"
+Requires-Dist: mypy; extra == "dev"
+Requires-Dist: black; extra == "dev"
+Requires-Dist: types-redis; extra == "dev"
+Requires-Dist: types-requests; extra == "dev"
+Provides-Extra: ml
