@@ -9,12 +9,11 @@ STACK:
 🌐 Frontend: Next.js (React) + Tailwind — Vercel (Hobby)
 
 ⚙️ Backend: FastAPI (Python) — Render/Railway (Free)
-    Cache: Upstash Redis (free tier)
-    Database: Supabase (PostgreSQL, free)
+    Cache: Upstash Redis 
+    Database: Supabase 
 
 📡 Data Sources: Open-Meteo; 
-                navigator.geolocation; 
-                Open-Meteo geocoding
+                OpenWeathermap gelocation
 
 🤖 AI/Personalization:
     Comfort Offset (Python or JS)
@@ -26,3 +25,6 @@ STACK:
             Render/Railway for backend; 
             Vitest/Jest (frontend) + Pytest (backend); 
             env vars in Vercel/Render dashboards
+
+Diagram:
+![A Screenshot of the Diagram](./Control_flow.png)
