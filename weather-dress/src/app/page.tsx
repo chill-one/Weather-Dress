@@ -1,57 +1,46 @@
-// app/page.tsx
-export default function Home() {
+"use client";
+import React, { useState } from "react";
+import { LocationPicker } from "@/src/app/components/location/LocationPicker";
+import { motion } from "framer-motion";
+export default function Page() {
+  const [location, setLocation] = useState<{
+    name: string;
+    latitude: number;
+    longitude: number;
+  } | null>(null);
+
   return (
-    <main className="mx-auto max-w-screen-md px-4 py-6 space-y-6">
-      <header className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">WeatherDress</h1>
-        <button aria-label="Toggle theme" className="rounded-xl px-3 py-2 border">☀️/🌙</button>
+    <main className="min-h-screen bg-gradient-to-b from-white to-neutral-50 dark:from-neutral-950 dark:to-neutral-900">
+      {/* Top title */}
+      <header className="pt-10 sm:pt-12 text-center">
+        <h1 className="text-3xl sm:text-8xl font-bold tracking-tight">
+          Weather Dress
+        </h1>
       </header>
+      
 
-      {/* Location + tabs */}
-      <section className="flex flex-col gap-3">
-        <div className="flex items-center justify-between">
-          <button className="rounded-full border px-3 py-2">📍 Manassas ▾</button>
-          <nav className="flex gap-2">
-            {["Today","Hourly","7-Day"].map(tab => (
-              <button key={tab} className="rounded-full px-3 py-1 border">{tab}</button>
-            ))}
-          </nav>
-        </div>
-
-        {/* Weather card */}
-        <div className="rounded-2xl border p-4">
-          <div className="flex items-center justify-between">
-            <div className="text-5xl font-bold">62°</div>
-            <div className="text-sm text-muted-foreground">Feels 60° • 8 mph • 10% 🌧️</div>
-          </div>
-        </div>
+      {/* Centered search area */}
+      <section className="min-h-[60vh] grid place-content-center px-4 py-8">
+        <p className="text-sm text-neutral-600 dark:text-neutral-400">
+          Pick a location, to view weather and outfit suggestions.
+        </p>
+        <motion.div
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.35 }}
+          className="w-full max-w-xl rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white/70 dark:bg-neutral-900/60 p-4 shadow-sm"
+        >
+          <LocationPicker
+            onSelect={(loc) => {
+              setLocation(loc);
+              // Navigate or reveal the rest of the UI after a selection
+              // e.g., router.push(`/results?lat=${loc.latitude}&lon=${loc.longitude}`)
+            }}
+            className=""
+            defaultLabel="Search city or use GPS"
+          />
+        </motion.div>
       </section>
-
-      {/* Outfit grid */}
-      <section>
-        <h2 className="text-lg font-medium mb-3">Outfit for 60°–65°</h2>
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-          {["Light Jacket","T-Shirt","Jeans","Sneakers"].map(item => (
-            <article key={item} className="rounded-xl border p-3">
-              <div className="text-3xl">👕</div>
-              <div className="mt-2 font-medium">{item}</div>
-              <a className="text-sm underline mt-1 inline-block" href="#">Buy</a>
-            </article>
-          ))}
-        </div>
-      </section>
-
-      {/* Feedback */}
-      <section className="rounded-2xl border p-4">
-        <label className="block text-sm mb-2">How did this feel?</label>
-        <input type="range" min="-2" max="2" defaultValue={0} className="w-full" />
-        <div className="mt-3 flex gap-2">
-          <button className="rounded-xl px-3 py-2 border">Submit</button>
-          <button className="rounded-xl px-3 py-2 border">Save</button>
-        </div>
-      </section>
-
-      <footer className="text-xs text-muted-foreground">© WeatherDress</footer>
     </main>
   );
 }
