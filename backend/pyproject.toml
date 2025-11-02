@@ -6,9 +6,9 @@ requires-python = ">=3.10"
 dependencies = [
   "fastapi",
   "uvicorn[standard]",
-  "httpx",
+  "httpx>=0.27",
   "python-dotenv",
-  "pydantic-settings",
+  "pydantic>=2.7",
   "redis>=5",
   "supabase",
   "asyncpg",
