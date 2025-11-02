@@ -1,4 +1,5 @@
 # backend/app/main.py
+from .schemas import weather
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.responses import RedirectResponse, Response
@@ -6,7 +7,6 @@ from starlette.responses import RedirectResponse, Response
 # If you have routers, import them here
 from .routers import (
     health, 
-    weather, 
     feedback, 
     geo, 
     outfit  # adjust to what actually exists
