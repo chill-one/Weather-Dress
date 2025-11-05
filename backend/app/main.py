@@ -1,28 +1,37 @@
-import os
-from fastapi import FastAPI
+# app/main.py
+from fastapi import FastAPI, Query
 from fastapi.middleware.cors import CORSMiddleware
-from dotenv import load_dotenv
+from pydantic import BaseModel
+import os
 
-# Load .env in local/dev so OWM_API_KEY, REDIS_URL, etc. are available
-load_dotenv()
+app = FastAPI()
 
-app = FastAPI(title="Weather Outfit API")
-
-# CORS: allow your Next.js frontend to call this API from the browser.
-# Keep this list as tight as possible in production.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",
-        "https://your-frontend-domain.com",
-    ],
+    allow_origins=["http://localhost:3000"],  # your frontend dev origin
     allow_credentials=True,
-    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Register routers (OpenWeather endpoint + your other modules)
-from app.routers import weather as weather_router
-app.include_router(weather_router.router)
+class RecommendReq(BaseModel):
+    q: str          # e.g., "Arlington,VA,US"
+    units: str = "imperial"
 
-# ...existing routers (geo, feedback, outfit, health, etc.) should also be included similarly.
+class RecommendRes(BaseModel):
+    city: str
+    temp: float
+    recommendation: str
+
+@app.get("/weather/openweather")
+def weather(q: str = Query(...), units: str = "imperial"):
+    api_key = os.getenv("OWM_API_KEY")
+    if not api_key:
+        return {"detail": "Missing OWM_API_KEY"}
+    # call OpenWeather and return its JSON (left out for brevity)
+    return {"ok": True, "q": q, "units": units}
+
+@app.post("/recommend", response_model=RecommendRes)
+def recommend(body: RecommendReq):
+    # do your logic here (e.g., use weather + comfort model)
+    return RecommendRes(city=body.q, temp=72.0, recommendation="Light jacket + tee")
