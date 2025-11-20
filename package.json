@@ -1,0 +1,8 @@
+// package.json (repo root)
+{
+    "scripts": {
+      "dev:api": "python -m uvicorn app.main:app --reload --port 8000",
+      "dev:web": "next dev -p 3000",
+      "dev": "concurrently -n api,web -c blue,green \"npm:dev:api\" \"npm:dev:web\""
+    }
+  }

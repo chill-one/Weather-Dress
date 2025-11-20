@@ -123,21 +123,29 @@ export default function Page() {
 
   async function handleSelect(loc: Location) {
     setLocation(loc);
-
-    const qs = new URLSearchParams({ q: loc.name, units }).toString();
+  
+    // use coords instead of the full "City, State, Country" string
+    const qs = new URLSearchParams({
+      lat: String(loc.latitude),
+      lon: String(loc.longitude),
+      units,
+    }).toString();
+  
     const res = await fetch(`/api/weather/openweather?${qs}`, {
       cache: "no-store",
     });
+  
     const data: WeatherRes = await res.json();
     setWeather(data);
     setBg(pickBg(data));
-
+  
     // 🌍 update Vanta based on new location/weather
     const newClouds = cloudsOptionsForWeather(data);
     if (vantaEffect.current?.setOptions) {
       vantaEffect.current.setOptions(newClouds);
     }
   }
+  
 
   return (
     <main className="relative min-h-screen overflow-hidden">
@@ -146,7 +154,7 @@ export default function Page() {
 
       {/* Semi-transparent weather gradient overlay */}
       <div
-        className={`absolute inset-0 -z-10 bg-gradient-to-b ${bg} opacity-60 pointer-events-none`}
+        className={`absolute inset-0 -z-10 bg-gradient-to-b ${bg} opacity-10 pointer-events-none`}
       />
 
       {/* Actual content layer */}
@@ -158,8 +166,8 @@ export default function Page() {
         </header>
 
         <section className="min-h-[60vh] grid place-content-center px-4 py-8">
-          <p className="text-sm text-neutral-800/80 dark:text-neutral-200/80">
-            Pick a location to view weather and outfit suggestions.
+          <p className=" ml-4 text-sm text-neutral-800/80 dark:text-neutral-200/80">
+           Pick a location to view weather and outfit suggestions.
           </p>
 
           <motion.div
