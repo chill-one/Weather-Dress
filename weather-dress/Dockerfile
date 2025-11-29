@@ -3,13 +3,13 @@
 # ---------- Build stage ----------
 FROM node:20-alpine AS builder
 
-# Set working directory inside the container
 WORKDIR /app
 
 # Copy dependency manifests
 COPY package*.json ./
 
-# Install deps (works whether or not you have package-lock.json)
+# Install dependencies
+# If you have a package-lock.json, you can optimize by using: RUN npm ci
 RUN npm install
 
 # Copy the rest of the app source
@@ -26,16 +26,13 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV PORT=3000
 
-# Copy only what we need from the build stage
+# Copy only what we need to run the built app
 COPY --from=builder /app/package*.json ./
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/.next ./.next
 COPY --from=builder /app/public ./public
-# Copy Next config if present
-COPY --from=builder /app/next.config.* ./ 2>/dev/null || true
-COPY --from=builder /app/tsconfig.json ./tsconfig.json 2>/dev/null || true
 
 EXPOSE 3000
 
-# `npm start` should run `next start` in your package.json
+# "start" should be "next start" in package.json
 CMD ["npm", "start"]
