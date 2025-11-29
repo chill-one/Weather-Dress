@@ -136,6 +136,7 @@ export default function Page() {
     });
   
     const data: WeatherRes = await res.json();
+    console.log("Fetched weather data:", data);
     setWeather(data);
     setBg(pickBg(data));
   
