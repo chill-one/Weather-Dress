@@ -2,6 +2,9 @@ from typing import Optional
 from fastapi import FastAPI, Query, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+from dotenv import load_dotenv
+
+load_dotenv()  # Load environment variables from .env file if present
 import os
 
 app = FastAPI()
