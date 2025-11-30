@@ -54,7 +54,7 @@ export default function Page() {
       units,
     }).toString();
   
-    router.push(`/components/weather?${qs}`);
+    router.push(`/weather?${qs}`);
   }
   
 

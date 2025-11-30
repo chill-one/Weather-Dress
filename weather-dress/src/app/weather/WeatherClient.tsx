@@ -1,3 +1,4 @@
+// src/app/weather/WeatherClient.tsx
 "use client";
 
 import React, { useEffect, useRef, useState } from "react";
@@ -7,16 +8,26 @@ import { useSearchParams, useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 
 type WeatherRes = {
-  name?: string;
-  weather?: { id: number; main: string; description: string; icon: string }[];
-  main?: {
-    temp: number;
+  source?: string;
+  coords?: { lat: number; lon: number };
+  units?: string;
+  ok?: boolean;
+  q?: string | null;
+  lat?: number;
+  lon?: number;
+  current?: {
+    dt: number;
+    temp?: number;
     feels_like?: number;
-    temp_min?: number;
-    temp_max?: number;
     humidity?: number;
+    wind_speed?: number;
+    description?: string | null;
+    icon?: string | null;
   };
-  wind?: { speed?: number };
+  // keep hourly/daily/alerts loose for now
+  hourly?: any[];
+  daily?: any[];
+  alerts?: any[];
 };
 
 const BG = {
@@ -46,29 +57,30 @@ const defaultCloudsOptions = {
   sunlightColor: 0x8c6d51,
 };
 
-function pickBg(w: WeatherRes): string {
-  const icon = w.weather?.[0]?.icon ?? "01d";
-  const code = w.weather?.[0]?.id ?? 800;
-  const day = icon.endsWith("d");
+function pickBgFromIcon(icon?: string | null): string {
+  const code = icon ?? "01d";
+  const isDay = code.endsWith("d");
+  const prefix = code.slice(0, 2); // "01", "02", "03", ..., "50"
 
-  if (code >= 200 && code <= 232) return day ? BG.thunderDay : BG.thunderNight;
-  if (code >= 300 && code <= 321) return day ? BG.drizzleDay : BG.drizzleNight;
-  if (code >= 500 && code <= 531) return day ? BG.rainDay : BG.rainNight;
-  if (code >= 600 && code <= 622) return day ? BG.snowDay : BG.snowNight;
-  if (code >= 701 && code <= 781) return day ? BG.fogDay : BG.fogNight;
-  if (code === 800) return day ? BG.clearDay : BG.clearNight;
-  if (code >= 801 && code <= 804) return day ? BG.cloudsDay : BG.cloudsNight;
+  if (prefix === "11") return isDay ? BG.thunderDay : BG.thunderNight;
+  if (prefix === "09" || prefix === "10")
+    return isDay ? BG.rainDay : BG.rainNight;
+  if (prefix === "13") return isDay ? BG.snowDay : BG.snowNight;
+  if (prefix === "50") return isDay ? BG.fogDay : BG.fogNight;
+  if (["02", "03", "04"].includes(prefix))
+    return isDay ? BG.cloudsDay : BG.cloudsNight;
+  if (prefix === "01") return isDay ? BG.clearDay : BG.clearNight;
+
   return `${BG.defaultLight} ${BG.defaultDark}`;
 }
 
 function cloudsOptionsForWeather(w: WeatherRes | null) {
-  if (!w || !w.weather?.[0]) return defaultCloudsOptions;
+  const icon = w?.current?.icon ?? "01d";
+  const prefix = icon.slice(0, 2);
+  const isDay = icon.endsWith("d");
 
-  const icon = w.weather[0].icon ?? "01d";
-  const code = w.weather[0].id ?? 800;
-  const day = icon.endsWith("d");
-
-  if (code >= 200 && code <= 232) {
+  if (prefix === "11") {
+    // thunderstorm-ish
     return {
       ...defaultCloudsOptions,
       cloudShadowColor: 0x050520,
@@ -78,7 +90,8 @@ function cloudsOptionsForWeather(w: WeatherRes | null) {
     };
   }
 
-  if (!day) {
+  if (!isDay) {
+    // night-ish
     return {
       ...defaultCloudsOptions,
       cloudShadowColor: 0x0b1220,
@@ -88,6 +101,7 @@ function cloudsOptionsForWeather(w: WeatherRes | null) {
     };
   }
 
+  // daytime default
   return {
     ...defaultCloudsOptions,
     cloudShadowColor: 0x1b314a,
@@ -97,12 +111,12 @@ function cloudsOptionsForWeather(w: WeatherRes | null) {
   };
 }
 
-export default function WeatherPage() {
+export default function WeatherClient() {
   const searchParams = useSearchParams();
   const router = useRouter();
 
-  const lat = searchParams.get("lat");
-  const lon = searchParams.get("lon");
+  const latParam = searchParams.get("lat");
+  const lonParam = searchParams.get("lon");
   const name = searchParams.get("name") ?? "Selected location";
   const unitsParam = searchParams.get("units");
   const units: "imperial" | "metric" =
@@ -116,6 +130,7 @@ export default function WeatherPage() {
   const vantaRef = useRef<HTMLDivElement | null>(null);
   const vantaEffect = useRef<any>(null);
 
+  // Init Vanta
   useEffect(() => {
     if (!vantaRef.current) return;
 
@@ -130,35 +145,38 @@ export default function WeatherPage() {
     };
   }, []);
 
+  // Fetch weather
   useEffect(() => {
-    if (!lat || !lon) {
-      setError("Missing location. Please go back and pick a place.");
+    if (!latParam || !lonParam) {
+      setError("Missing location. Go back and pick a place again.");
       setLoading(false);
       return;
     }
+
+    const lat = latParam;
+    const lon = lonParam;
 
     async function fetchWeather() {
       try {
         setLoading(true);
         setError(null);
 
-        const qs = new URLSearchParams({
-          lat,
-          lon,
-          units,
-        }).toString();
+        const params = new URLSearchParams();
+        params.set("lat", lat);
+        params.set("lon", lon);
+        params.set("units", units);
 
-        const res = await fetch(`/api/weather/openweather?${qs}`, {
-          cache: "no-store",
-        });
+        const url = `/api/weather/openweather?${params.toString()}`;
+        console.log("Requesting weather from:", url);
 
-        if (!res.ok) {
-          throw new Error(`Request failed: ${res.status}`);
-        }
+        const res = await fetch(url, { cache: "no-store" });
+        if (!res.ok) throw new Error(`Request failed: ${res.status}`);
 
         const data: WeatherRes = await res.json();
+        console.log("Weather data on /weather page:", data);
+
         setWeather(data);
-        setBg(pickBg(data));
+        setBg(pickBgFromIcon(data.current?.icon));
 
         const newClouds = cloudsOptionsForWeather(data);
         if (vantaEffect.current?.setOptions) {
@@ -173,14 +191,14 @@ export default function WeatherPage() {
     }
 
     fetchWeather();
-  }, [lat, lon, units]);
+  }, [latParam, lonParam, units]);
 
   return (
     <main className="relative min-h-screen overflow-hidden">
-      {/* Vanta CLOUDS full-screen background */}
+      {/* Vanta background */}
       <div ref={vantaRef} className="absolute inset-0 -z-20" />
 
-      {/* Semi-transparent gradient overlay based on weather */}
+      {/* Gradient overlay based on weather */}
       <div
         className={`absolute inset-0 -z-10 bg-gradient-to-b ${bg} opacity-10 pointer-events-none`}
       />
@@ -215,21 +233,25 @@ export default function WeatherPage() {
             )}
 
             {error && (
-              <p className="text-sm text-red-500">{error}</p>
+              <p className="text-sm text-red-500">
+                {error}
+              </p>
             )}
 
             {!loading && !error && weather && (
               <>
-                <h1 className="text-xl font-semibold mb-1">{name}</h1>
+                <h1 className="text-xl font-semibold mb-1">
+                  {name}
+                </h1>
 
                 <p className="text-xs text-neutral-800/70 dark:text-neutral-200/70 mb-4 capitalize">
-                  {weather.weather?.[0]?.description ?? "Current conditions"}
+                  {weather.current?.description ?? "Current conditions"}
                 </p>
 
                 <div className="flex items-baseline gap-2 mb-4">
                   <span className="text-5xl font-bold">
-                    {weather.main?.temp != null
-                      ? Math.round(weather.main.temp)
+                    {weather.current?.temp != null
+                      ? Math.round(weather.current.temp)
                       : "--"}
                   </span>
                   <span className="text-lg">
@@ -243,10 +265,10 @@ export default function WeatherPage() {
                       Feels like
                     </p>
                     <p className="font-semibold">
-                      {weather.main?.feels_like != null
-                        ? Math.round(weather.main.feels_like)
+                      {weather.current?.feels_like != null
+                        ? Math.round(weather.current.feels_like)
                         : "--"}
-                      {weather.main?.feels_like != null &&
+                      {weather.current?.feels_like != null &&
                         (units === "imperial" ? "°F" : "°C")}
                     </p>
                   </div>
@@ -256,28 +278,9 @@ export default function WeatherPage() {
                       Humidity
                     </p>
                     <p className="font-semibold">
-                      {weather.main?.humidity != null
-                        ? `${weather.main.humidity}%`
+                      {weather.current?.humidity != null
+                        ? `${weather.current.humidity}%`
                         : "--"}
-                    </p>
-                  </div>
-
-                  <div>
-                    <p className="text-neutral-800/70 dark:text-neutral-300/70">
-                      Low / High
-                    </p>
-                    <p className="font-semibold">
-                      {weather.main?.temp_min != null
-                        ? Math.round(weather.main.temp_min)
-                        : "--"}
-                      {weather.main?.temp_min != null &&
-                        (units === "imperial" ? "°F" : "°C")}
-                      {" / "}
-                      {weather.main?.temp_max != null
-                        ? Math.round(weather.main.temp_max)
-                        : "--"}
-                      {weather.main?.temp_max != null &&
-                        (units === "imperial" ? "°F" : "°C")}
                     </p>
                   </div>
 
@@ -286,14 +289,17 @@ export default function WeatherPage() {
                       Wind speed
                     </p>
                     <p className="font-semibold">
-                      {weather.wind?.speed != null
-                        ? `${weather.wind.speed} ${
+                      {weather.current?.wind_speed != null
+                        ? `${weather.current.wind_speed} ${
                             units === "imperial" ? "mph" : "m/s"
                           }`
                         : "--"}
                     </p>
                   </div>
                 </div>
+
+                
+                        
               </>
             )}
           </motion.div>

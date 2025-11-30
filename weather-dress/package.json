@@ -16,6 +16,7 @@
     "@types/react-dom": "^19",
     "@types/three": "^0.181.0",
     "autoprefixer": "^10.4.21",
+    "baseline-browser-mapping": "^2.8.32",
     "eslint": "^9",
     "eslint-config-next": "15.5.4",
     "postcss": "^8.5.6",
@@ -23,11 +24,16 @@
     "typescript": "^5"
   },
   "dependencies": {
+    "@gsap/react": "^2.1.2",
+    "@react-three/drei": "^10.7.7",
+    "@react-three/fiber": "^9.4.2",
     "framer-motion": "^12.23.24",
+    "gsap": "^3.13.0",
+    "maath": "^0.10.8",
     "next": "^16.0.3",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
-    "three": "^0.181.1",
+    "three": "^0.181.2",
     "vanta": "^0.5.24"
   }
 }
