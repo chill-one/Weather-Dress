@@ -8,7 +8,6 @@ services:
     container_name: weather-dress-backend
     ports:
       - "8000:8000"
-    # optional: if you have a backend/.env for your API keys, DB URL, etc.
     env_file:
       - ./backend/.env
 
@@ -20,7 +19,6 @@ services:
     ports:
       - "3000:3000"
     environment:
-      # inside the Docker network, "backend" is the hostname of the backend container
       NEXT_PUBLIC_BACKEND_URL: "http://backend:8000"
     depends_on:
       - backend
