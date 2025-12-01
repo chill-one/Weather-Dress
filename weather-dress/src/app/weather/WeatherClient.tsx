@@ -314,11 +314,28 @@ export default function WeatherClient() {
   // Apply overrides (for testing)
   const finalKind = forceKindParam ?? effectKind;
   const finalType = forceTypeParam ?? effectType;
+  console.log("Effect debug", {
+    forceKindParam,
+    forceTypeParam,
+    effectKind,
+    effectType,
+    finalKind,
+    finalType,
+  });
+  
 
   // ---------- RENDER ----------
 
   return (
     <main className="relative min-h-screen overflow-hidden">
+        {/* DEBUG BADGE */}
+        {finalKind && (
+        <div className="absolute top-4 right-4 z-[9999] bg-black/80 text-xs text-lime-300 px-3 py-1 rounded">
+            Effect: {finalKind} ({finalType ?? "default"})
+        </div>
+        )}
+
+
       {/* 1) Vanta clouds base background */}
       <div ref={vantaRef} className="absolute inset-0 z-0" />
 
