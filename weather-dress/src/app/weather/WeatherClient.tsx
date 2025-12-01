@@ -6,6 +6,9 @@ import * as THREE from "three";
 import CLOUDS from "vanta/src/vanta.clouds";
 import { useSearchParams, useRouter } from "next/navigation";
 import { motion } from "framer-motion";
+import dynamic from "next/dynamic";
+
+// ---------- TYPES ----------
 
 type WeatherRes = {
   source?: string;
@@ -24,11 +27,17 @@ type WeatherRes = {
     description?: string | null;
     icon?: string | null;
   };
-  // keep hourly/daily/alerts loose for now
   hourly?: any[];
   daily?: any[];
   alerts?: any[];
 };
+
+type WeatherEffectProps = {
+  type?: string;
+  backgroundImageUrl?: string; // keep optional so we don't have to pass it
+};
+
+// ---------- BACKGROUND GRADIENT + VANTA CONFIG ----------
 
 const BG = {
   clearDay: "from-sky-200 to-blue-500",
@@ -111,6 +120,94 @@ function cloudsOptionsForWeather(w: WeatherRes | null) {
   };
 }
 
+// ---------- DYNAMIC IMPORTS FOR RAIN / SNOW / FOG EFFECTS ----------
+
+const RainEffect = dynamic<WeatherEffectProps>(
+  () => import("./effects/rain/RainEffect"),
+  { ssr: false }
+);
+
+const SnowEffect = dynamic<WeatherEffectProps>(
+  () => import("./effects/snow/SnowEffect"),
+  { ssr: false }
+);
+
+const FogEffect = dynamic<WeatherEffectProps>(
+  () => import("./effects/fog/FogEffect"),
+  { ssr: false }
+);
+
+// ---------- MAP WEATHER -> EFFECT FAMILY + VARIANT ----------
+
+function pickEffectConfig(
+  weather: WeatherRes | null
+): { kind: "rain" | "snow" | "fog" | null; type?: string } {
+  if (!weather?.current) return { kind: null };
+
+  const icon = weather.current.icon ?? "01d";
+  const prefix = icon.slice(0, 2);
+  const desc = (weather.current.description ?? "").toLowerCase();
+
+  // SNOW
+  if (prefix === "13" || desc.includes("snow") || desc.includes("sleet")) {
+    if (
+      desc.includes("storm") ||
+      desc.includes("blizzard") ||
+      desc.includes("heavy")
+    ) {
+      return { kind: "snow", type: "Storm" };
+    }
+    return { kind: "snow", type: "Gentle" };
+  }
+
+  // RAIN
+  if (
+    prefix === "09" ||
+    prefix === "10" ||
+    prefix === "11" ||
+    desc.includes("rain") ||
+    desc.includes("drizzle") ||
+    desc.includes("thunderstorm")
+  ) {
+    if (desc.includes("drizzle")) {
+      return { kind: "rain", type: "Drizzle" };
+    }
+
+    if (prefix === "11" || desc.includes("thunderstorm") || desc.includes("storm")) {
+      return { kind: "rain", type: "Storm" };
+    }
+
+    if (desc.includes("shower") || desc.includes("heavy") || desc.includes("downpour")) {
+      return { kind: "rain", type: "Fallout" };
+    }
+
+    return { kind: "rain", type: "Rain" };
+  }
+
+  // FOG
+  if (
+    prefix === "50" ||
+    desc.includes("fog") ||
+    desc.includes("mist") ||
+    desc.includes("haze") ||
+    desc.includes("smoke")
+  ) {
+    if (
+      desc.includes("dense") ||
+      desc.includes("smoke") ||
+      desc.includes("thick") ||
+      desc.includes("heavy")
+    ) {
+      return { kind: "fog", type: "Dense" };
+    }
+    return { kind: "fog", type: "Light" };
+  }
+
+  return { kind: null };
+}
+
+// ---------- COMPONENT ----------
+
 export default function WeatherClient() {
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -122,15 +219,28 @@ export default function WeatherClient() {
   const units: "imperial" | "metric" =
     unitsParam === "metric" ? "metric" : "imperial";
 
+  // URL overrides for testing (e.g. ?forceKind=rain&forceType=Storm)
+  const fk = searchParams.get("forceKind");
+  const forceKindParam =
+    fk === "rain" || fk === "snow" || fk === "fog" ? fk : null;
+
+  const forceTypeParam = searchParams.get("forceType") || undefined;
+
   const [bg, setBg] = useState<string>(`${BG.defaultLight} ${BG.defaultDark}`);
   const [weather, setWeather] = useState<WeatherRes | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  const [effectKind, setEffectKind] = useState<"rain" | "snow" | "fog" | null>(
+    null
+  );
+  const [effectType, setEffectType] = useState<string | undefined>(undefined);
+
+  // Vanta refs
   const vantaRef = useRef<HTMLDivElement | null>(null);
   const vantaEffect = useRef<any>(null);
 
-  // Init Vanta
+  // Init Vanta clouds
   useEffect(() => {
     if (!vantaRef.current) return;
 
@@ -145,7 +255,7 @@ export default function WeatherClient() {
     };
   }, []);
 
-  // Fetch weather
+  // Fetch weather + update bg, vanta, and effect
   useEffect(() => {
     if (!latParam || !lonParam) {
       setError("Missing location. Go back and pick a place again.");
@@ -176,12 +286,20 @@ export default function WeatherClient() {
         console.log("Weather data on /weather page:", data);
 
         setWeather(data);
+
+        // gradient tint
         setBg(pickBgFromIcon(data.current?.icon));
 
+        // update Vanta cloud colors
         const newClouds = cloudsOptionsForWeather(data);
         if (vantaEffect.current?.setOptions) {
           vantaEffect.current.setOptions(newClouds);
         }
+
+        // pick particle effect
+        const cfg = pickEffectConfig(data);
+        setEffectKind(cfg.kind);
+        setEffectType(cfg.type);
       } catch (err) {
         console.error(err);
         setError("Couldn't load weather for this location.");
@@ -193,27 +311,48 @@ export default function WeatherClient() {
     fetchWeather();
   }, [latParam, lonParam, units]);
 
+  // Apply overrides (for testing)
+  const finalKind = forceKindParam ?? effectKind;
+  const finalType = forceTypeParam ?? effectType;
+
+  // ---------- RENDER ----------
+
   return (
     <main className="relative min-h-screen overflow-hidden">
-      {/* Vanta background */}
-      <div ref={vantaRef} className="absolute inset-0 -z-20" />
+      {/* 1) Vanta clouds base background */}
+      <div ref={vantaRef} className="absolute inset-0 z-0" />
 
-      {/* Gradient overlay based on weather */}
+      {/* 2) Gradient tint based on weather icon */}
       <div
-        className={`absolute inset-0 -z-10 bg-gradient-to-b ${bg} opacity-10 pointer-events-none`}
+        className={`absolute inset-0 z-10 bg-gradient-to-b ${bg} opacity-25 pointer-events-none`}
       />
 
-      {/* Content */}
-      <div className="relative z-10 min-h-screen flex flex-col">
+      {/* 3) Weather particles overlay (rain / snow / fog) */}
+      <div className="absolute inset-0 z-20">
+        {finalKind === "rain" && (
+          <RainEffect type={finalType ?? "Rain"} />
+        )}
+
+        {finalKind === "snow" && (
+          <SnowEffect type={finalType ?? "Gentle"} />
+        )}
+
+        {finalKind === "fog" && (
+          <FogEffect type={finalType ?? "Light"} />
+        )}
+      </div>
+
+      {/* 4) Content on top */}
+      <div className="relative z-30 min-h-screen flex flex-col">
         <header className="pt-6 px-4 flex items-center justify-between">
           <button
             onClick={() => router.push("/")}
-            className="text-sm text-neutral-800/80 dark:text-neutral-200/80 underline underline-offset-4"
+            className="text-sm text-neutral-100/90 underline underline-offset-4"
           >
             ← Change location
           </button>
 
-          <span className="text-xs text-neutral-800/70 dark:text-neutral-200/70">
+          <span className="text-xs text-neutral-100/80">
             Units: {units === "imperial" ? "°F" : "°C"}
           </span>
         </header>
@@ -223,17 +362,17 @@ export default function WeatherClient() {
             initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.35 }}
-            className="w-full max-w-md rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white/75 dark:bg-neutral-900/70 p-6 shadow-lg backdrop-blur"
+            className="w-full max-w-md rounded-2xl border border-white/20 bg-black/60 text-white p-6 shadow-lg backdrop-blur"
           >
             {loading && (
-              <p className="text-sm text-neutral-800/80 dark:text-neutral-200/80">
+              <p className="text-sm text-neutral-100/90">
                 Loading weather for{" "}
                 <span className="font-semibold">{name}</span>...
               </p>
             )}
 
             {error && (
-              <p className="text-sm text-red-500">
+              <p className="text-sm text-red-400">
                 {error}
               </p>
             )}
@@ -244,7 +383,7 @@ export default function WeatherClient() {
                   {name}
                 </h1>
 
-                <p className="text-xs text-neutral-800/70 dark:text-neutral-200/70 mb-4 capitalize">
+                <p className="text-xs text-neutral-100/70 mb-4 capitalize">
                   {weather.current?.description ?? "Current conditions"}
                 </p>
 
@@ -261,7 +400,7 @@ export default function WeatherClient() {
 
                 <div className="grid grid-cols-2 gap-4 text-sm">
                   <div>
-                    <p className="text-neutral-800/70 dark:text-neutral-300/70">
+                    <p className="text-neutral-100/70">
                       Feels like
                     </p>
                     <p className="font-semibold">
@@ -274,7 +413,7 @@ export default function WeatherClient() {
                   </div>
 
                   <div>
-                    <p className="text-neutral-800/70 dark:text-neutral-300/70">
+                    <p className="text-neutral-100/70">
                       Humidity
                     </p>
                     <p className="font-semibold">
@@ -285,7 +424,7 @@ export default function WeatherClient() {
                   </div>
 
                   <div>
-                    <p className="text-neutral-800/70 dark:text-neutral-300/70">
+                    <p className="text-neutral-100/70">
                       Wind speed
                     </p>
                     <p className="font-semibold">
@@ -297,9 +436,6 @@ export default function WeatherClient() {
                     </p>
                   </div>
                 </div>
-
-                
-                        
               </>
             )}
           </motion.div>

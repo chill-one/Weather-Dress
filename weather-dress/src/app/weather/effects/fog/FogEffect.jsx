@@ -1,11 +1,11 @@
 "use client";
 
-import React, { useRef, useMemo } from 'react';
-import { Canvas, useFrame, useLoader } from '@react-three/fiber';
-import * as THREE from 'three';
-import fogElementImg from './fog-element.png';
-import denseFogElementImg from './dense-fog-element.png';
-import gsap from 'gsap';
+import React, { useRef, useMemo } from "react";
+import { Canvas, useFrame, useLoader } from "@react-three/fiber";
+import * as THREE from "three";
+import fogElementImg from "./fog-element.png";
+import denseFogElementImg from "./dense-fog-element.png";
+import gsap from "gsap";
 
 // Settings for light and dense fog
 const LIGHT_FOG_SETTINGS = {
@@ -17,6 +17,7 @@ const LIGHT_FOG_SETTINGS = {
   scaleMax: 1.7,
   moveSpeed: 0.02,
 };
+
 const DENSE_FOG_SETTINGS = {
   count: 38,
   fogElementRatio: 0.35, // 35% fog-element, 65% dense-fog-element
@@ -30,35 +31,58 @@ const DENSE_FOG_SETTINGS = {
 function FogSprite({ texture, initial, moveSpeed, windOffset }) {
   const mesh = useRef();
   const visibleRef = useRef(false); // Track if currently visible
+
   useFrame((state) => {
-    if (mesh.current) {
-      const t = state.clock.getElapsedTime();
-      // Add wind offset to base position
-      let x = initial.x + (windOffset?.current?.x || 0) + Math.sin(t * initial.driftSpeedX + initial.driftPhaseX) * initial.driftAmountX;
-      let y = initial.y + (windOffset?.current?.y || 0) + Math.cos(t * initial.driftSpeedY + initial.driftPhaseY) * initial.driftAmountY;
-      // Loop position in [-1.1, 1.1] for seamless looping
-      if (x > 1.1) x -= 2.2;
-      if (x < -1.1) x += 2.2;
-      if (y > 1.1) y -= 2.2;
-      if (y < -1.1) y += 2.2;
-      mesh.current.position.x = x;
-      mesh.current.position.y = y;
-      // Determine if inside visible area
-      const isVisible = x > -1 && x < 1 && y > -1 && y < 1;
-      // Animate opacity with GSAP only on enter/exit
-      if (mesh.current.material) {
-        if (isVisible && !visibleRef.current) {
-          // Entering: fade in
-          gsap.to(mesh.current.material, { opacity: initial.alpha, duration: .5, overwrite: true });
-          visibleRef.current = true;
-        } else if (!isVisible && visibleRef.current) {
-          // Exiting: fade out
-          gsap.to(mesh.current.material, { opacity: 0, duration: .5, overwrite: true });
-          visibleRef.current = false;
-        }
+    if (!mesh.current) return;
+
+    const t = state.clock.getElapsedTime();
+
+    // Add wind offset to base position
+    let x =
+      initial.x +
+      (windOffset?.current?.x || 0) +
+      Math.sin(t * initial.driftSpeedX + initial.driftPhaseX) *
+        initial.driftAmountX;
+    let y =
+      initial.y +
+      (windOffset?.current?.y || 0) +
+      Math.cos(t * initial.driftSpeedY + initial.driftPhaseY) *
+        initial.driftAmountY;
+
+    // Loop position in [-1.1, 1.1] for seamless looping
+    if (x > 1.1) x -= 2.2;
+    if (x < -1.1) x += 2.2;
+    if (y > 1.1) y -= 2.2;
+    if (y < -1.1) y += 2.2;
+
+    mesh.current.position.x = x;
+    mesh.current.position.y = y;
+
+    // Determine if inside visible area
+    const isVisible = x > -1 && x < 1 && y > -1 && y < 1;
+
+    // Animate opacity with GSAP only on enter/exit
+    if (mesh.current.material) {
+      if (isVisible && !visibleRef.current) {
+        // Entering: fade in
+        gsap.to(mesh.current.material, {
+          opacity: initial.alpha,
+          duration: 0.5,
+          overwrite: true,
+        });
+        visibleRef.current = true;
+      } else if (!isVisible && visibleRef.current) {
+        // Exiting: fade out
+        gsap.to(mesh.current.material, {
+          opacity: 0,
+          duration: 0.5,
+          overwrite: true,
+        });
+        visibleRef.current = false;
       }
     }
   });
+
   return (
     <mesh ref={mesh} position={[initial.x, initial.y, 0]}>
       <planeGeometry args={[initial.scale, initial.scale]} />
@@ -72,7 +96,7 @@ function FogSprite({ texture, initial, moveSpeed, windOffset }) {
   );
 }
 
-// Add a helper component for global wind animation
+// Helper component for global wind animation
 function FogWindController({ windAngle, windOffset }) {
   useFrame(() => {
     // Occasionally nudge wind angle
@@ -82,26 +106,41 @@ function FogWindController({ windAngle, windOffset }) {
       if (windAngle.current > Math.PI) windAngle.current -= 2 * Math.PI;
       if (windAngle.current < -Math.PI) windAngle.current += 2 * Math.PI;
     }
+
     // Much slower wind movement
-    const windSpeed = 0.0007; // Much slower
+    const windSpeed = 0.0007;
     windOffset.current.x += Math.cos(windAngle.current) * windSpeed;
     windOffset.current.y += Math.sin(windAngle.current) * windSpeed;
+
     // Loop wind offset in [-1, 1] for seamless looping
     if (windOffset.current.x > 1) windOffset.current.x -= 2;
     if (windOffset.current.x < -1) windOffset.current.x += 2;
     if (windOffset.current.y > 1) windOffset.current.y -= 2;
     if (windOffset.current.y < -1) windOffset.current.y += 2;
   });
+
   return null;
 }
 
-export default function FogEffect({ backgroundImageUrl, type = 'light' }) {
+/**
+ * FogEffect component
+ * Props (JS side):
+ *   - type?: 'light' | 'dense' (default: 'light')
+ *   - backgroundImageUrl?: string
+ *
+ * NOTE: We take `props` and destructure inside so TypeScript
+ *       doesn’t infer `backgroundImageUrl` as required.
+ */
+export default function FogEffect(props) {
+  const { backgroundImageUrl, type = "light" } = props || {};
+
   // Load both fog textures
   const [fogElement, denseFogElement] = useLoader(THREE.TextureLoader, [
     fogElementImg.src,
     denseFogElementImg.src,
   ]);
-  const settings = type === 'dense' ? DENSE_FOG_SETTINGS : LIGHT_FOG_SETTINGS;
+
+  const settings = type === "dense" ? DENSE_FOG_SETTINGS : LIGHT_FOG_SETTINGS;
 
   // Wind angle (in radians) and wind offset
   const windAngle = React.useRef(0); // 0 = right
@@ -113,20 +152,31 @@ export default function FogEffect({ backgroundImageUrl, type = 'light' }) {
       // Randomly choose which texture to use
       const useFogElement = Math.random() < settings.fogElementRatio;
       const texture = useFogElement ? fogElement : denseFogElement;
-      // Random position in [-1, 1] (covering the screen)
+
+      // Random position in [-1.1, 1.1]
       const x = (Math.random() - 0.5) * 2.2;
       const y = (Math.random() - 0.5) * 2.2;
+
       // Random scale
-      const scale = settings.scaleMin + Math.random() * (settings.scaleMax - settings.scaleMin);
+      const scale =
+        settings.scaleMin +
+        Math.random() * (settings.scaleMax - settings.scaleMin);
+
       // Random alpha
-      const alpha = settings.alphaMin + Math.random() * (settings.alphaMax - settings.alphaMin);
+      const alpha =
+        settings.alphaMin +
+        Math.random() * (settings.alphaMax - settings.alphaMin);
+
       // Random drift parameters
       const driftAmountX = 0.08 + Math.random() * 0.18;
       const driftAmountY = 0.08 + Math.random() * 0.18;
-      const driftSpeedX = settings.moveSpeed * (0.7 + Math.random() * 0.6);
-      const driftSpeedY = settings.moveSpeed * (0.7 + Math.random() * 0.6);
+      const driftSpeedX =
+        settings.moveSpeed * (0.7 + Math.random() * 0.6);
+      const driftSpeedY =
+        settings.moveSpeed * (0.7 + Math.random() * 0.6);
       const driftPhaseX = Math.random() * Math.PI * 2;
       const driftPhaseY = Math.random() * Math.PI * 2;
+
       return {
         texture,
         x,
@@ -143,19 +193,23 @@ export default function FogEffect({ backgroundImageUrl, type = 'light' }) {
     });
   }, [fogElement, denseFogElement, settings]);
 
+  // Make background image optional
+  const containerStyle = {
+    width: "100vw",
+    height: "100vh",
+    backgroundSize: "cover",
+    backgroundPosition: "center",
+    position: "relative",
+  };
+
+  if (backgroundImageUrl) {
+    containerStyle.backgroundImage = `url(${backgroundImageUrl})`;
+  }
+
   return (
-    <div
-      style={{
-        width: '100vw',
-        height: '100vh',
-        backgroundImage: `url(${backgroundImageUrl})`,
-        backgroundSize: 'cover',
-        backgroundPosition: 'center',
-        position: 'relative',
-      }}
-    >
+    <div style={containerStyle}>
       <Canvas
-        style={{ position: 'absolute', top: 0, left: 0 }}
+        style={{ position: "absolute", top: 0, left: 0 }}
         camera={{ position: [0, 0, 1], fov: 75 }}
       >
         <FogWindController windAngle={windAngle} windOffset={windOffset} />
@@ -171,4 +225,4 @@ export default function FogEffect({ backgroundImageUrl, type = 'light' }) {
       </Canvas>
     </div>
   );
-}   
+}
