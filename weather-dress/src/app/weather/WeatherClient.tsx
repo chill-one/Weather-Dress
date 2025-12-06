@@ -35,6 +35,7 @@ type WeatherRes = {
 type WeatherEffectProps = {
   type?: string;
   backgroundImageUrl?: string; // keep optional so we don't have to pass it
+  intensity?: number;
 };
 
 // ---------- BACKGROUND GRADIENT + VANTA CONFIG ----------
