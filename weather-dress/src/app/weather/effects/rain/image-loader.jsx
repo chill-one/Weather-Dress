@@ -1,3 +1,6 @@
+const TRANSPARENT_PIXEL =
+  "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Yd0xm4AAAAASUVORK5CYII=";
+
 function loadImage(src,i,onLoad){
     return new Promise((resolve,reject)=>{
       if(typeof src=="string"){
@@ -17,8 +20,18 @@ function loadImage(src,i,onLoad){
         
         resolve(src);
       });
+
+      img.addEventListener("error",()=>{
+        // keep the promise chain moving even if the asset can't be fetched
+        img.src = TRANSPARENT_PIXEL;
+        resolve(src);
+      });
       
-      img.src=src.src.src;
+      const resolvedSrc =
+        typeof src.src === "string"
+          ? src.src
+          : (src.src && src.src.src) || "";
+      img.src = resolvedSrc || TRANSPARENT_PIXEL;
     })
   }
   

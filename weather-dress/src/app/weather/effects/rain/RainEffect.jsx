@@ -3,9 +3,6 @@
 import React, { useEffect } from "react";
 
 import RainRenderer from "./rain-renderer";
-import TweenLite from "gsap";
-import times from "./times";
-import { random, chance } from "./random";
 import Raindrops from "./raindrops";
 import loadImages from "./image-loader";
 import createCanvas from "./create-canvas";
@@ -14,12 +11,8 @@ import { weatherData } from "./rain-utils";
 import DropColor from "./img/drop-color.png";
 import DropAlpha from "./img/drop-alpha.png";
 
-// 1x1 black PNG, used when you don't pass a backgroundImageUrl
-const FALLBACK_BG_DATA_URL =
-  "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR4nGMAAQAABQABDQottAAAAABJRU5ErkJggg==";
-
 const RainEffect = (props) => {
-  const { type = "rain", backgroundImageUrl } = props || {};
+  const { type = "rain", backgroundImageUrl, intensity } = props || {};
 
   let canvas,
     dropAlpha,
@@ -34,7 +27,6 @@ const RainEffect = (props) => {
 
   let backgroundImage = null;
   let intervalId;
-  let blend = { v: 0 };
 
   let textureFgSize = {
     width: 100,
@@ -49,8 +41,7 @@ const RainEffect = (props) => {
   useEffect(() => {
     if (typeof window === "undefined") return;
 
-    const url = backgroundImageUrl || FALLBACK_BG_DATA_URL;
-    setBackgroundImage(url, type);
+    setBackgroundImage(backgroundImageUrl, type);
 
     // cleanup lightning interval on unmount
     return () => {
@@ -59,30 +50,84 @@ const RainEffect = (props) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [backgroundImageUrl, type]);
 
+  // Create a soft gradient so we have color data even when no photo is provided
+  const createFallbackTexture = (weatherType = "rain") => {
+    const size = 1024;
+    const fallbackCanvas = createCanvas(size, size);
+    const ctx = fallbackCanvas?.getContext("2d");
+    if (!ctx) return fallbackCanvas;
+
+    const normalized = weatherType.toLowerCase();
+    const palette =
+      normalized === "storm"
+        ? ["#4b5563", "#0f172a"]
+        : normalized === "drizzle"
+        ? ["#c1d9ff", "#5a6e96"]
+        : normalized === "fallout"
+        ? ["#d1d5db", "#3b4256"]
+        : ["#9ecbff", "#1e3a8a"];
+
+    const gradient = ctx.createLinearGradient(0, 0, 0, size);
+    gradient.addColorStop(0, palette[0]);
+    gradient.addColorStop(1, palette[1]);
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, size, size);
+
+    // Subtle sheen so refraction is visible without a photo
+    ctx.fillStyle = "rgba(255,255,255,0.04)";
+    for (let i = 0; i < 40; i += 1) {
+      const width = size * 0.6 * Math.random();
+      const x = Math.random() * (size - width);
+      const y = Math.random() * size;
+      ctx.fillRect(x, y, width, 2);
+    }
+
+    return fallbackCanvas;
+  };
+
+
   // Set the background image and initialize rain effect after image loads
   const setBackgroundImage = (url, weatherType) => {
     if (typeof window === "undefined") return;
 
-    const img = new window.Image();
-    img.crossOrigin = "anonymous";
-    img.src = url;
+    const applyAndInit = (imgLike) => {
+      backgroundImage = imgLike;
+      finishInit();
+    };
 
-    img.onload = () => {
-      backgroundImage = img;
-
+    const finishInit = () => {
       textureFgSize = {
-        width: backgroundImage.naturalWidth || 100,
-        height: backgroundImage.naturalHeight || 100,
+        width: backgroundImage.naturalWidth || backgroundImage.width || 100,
+        height: backgroundImage.naturalHeight || backgroundImage.height || 100,
       };
       textureBgSize = {
-        width: backgroundImage.naturalWidth || 100,
-        height: backgroundImage.naturalHeight || 100,
+        width: textureFgSize.width,
+        height: textureFgSize.height,
       };
 
       // Once the image is loaded and sizes are known, load textures + init
       loadTextures().then(() => {
         init(weatherType);
       });
+    };
+
+    // If no URL was provided, use a bright fallback gradient so the scene isn't blacked out
+    if (!url) {
+      applyAndInit(createFallbackTexture(weatherType));
+      return;
+    }
+
+    const img = new window.Image();
+    img.crossOrigin = "anonymous";
+    img.src = url;
+
+    img.onload = () => {
+      applyAndInit(img);
+    };
+
+    img.onerror = () => {
+      // If image fails to load, use fallback texture
+      applyAndInit(createFallbackTexture(weatherType));
     };
   };
 
@@ -100,7 +145,18 @@ const RainEffect = (props) => {
   const init = (weatherType = "rain") => {
     // normalize type to what weatherData expects (likely all lowercase)
     const normalizedType = (weatherType || "rain").toLowerCase();
-
+    const baseWeatherData = weatherData[normalizedType] || weatherData.rain;
+    const clampedIntensity = Math.max(0.2, Math.min(intensity ?? baseWeatherData.intensity ?? 1, 1.5));
+    const scaledWeatherData = {
+      ...baseWeatherData,
+      intensity: clampedIntensity,
+      rainChance: baseWeatherData.rainChance * clampedIntensity,
+      rainLimit: Math.max(
+        1,
+        Math.round(baseWeatherData.rainLimit * clampedIntensity)
+      ),
+      drizzle: Math.round(baseWeatherData.drizzle * clampedIntensity),
+    };
     canvas = document.querySelector("#container-weather");
     if (!canvas) return;
 
@@ -155,15 +211,15 @@ const RainEffect = (props) => {
       textureBg,
       null,
       {
-        brightness: 1.04,
-        alphaMultiply: 16,
-        alphaSubtract: 4,
-        minRefraction: 128,
+        brightness: 1.2,
+        alphaMultiply: 12,
+        alphaSubtract: 2,
+        minRefraction: 100,
       }
     );
 
     curWeatherData = {
-      ...weatherData[normalizedType],
+      ...scaledWeatherData,
       fg: backgroundImage,
       bg: backgroundImage,
     };
