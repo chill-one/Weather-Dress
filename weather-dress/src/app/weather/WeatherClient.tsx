@@ -231,6 +231,11 @@ export default function WeatherClient() {
   const [weather, setWeather] = useState<WeatherRes | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [showWeekly, setShowWeekly] = useState(false);
+  const [showWeeklyPanel, setShowWeeklyPanel] = useState(false);
+
+  // Animation timing (ms). Adjust here to change speed globally.
+  const layoutDuration = 350;
 
   const [effectKind, setEffectKind] = useState<"rain" | "snow" | "fog" | null>(
     null
@@ -306,11 +311,22 @@ export default function WeatherClient() {
         setError("Couldn't load weather for this location.");
       } finally {
         setLoading(false);
+        setShowWeekly(false);
+        setShowWeeklyPanel(false);
       }
     }
 
     fetchWeather();
   }, [latParam, lonParam, units]);
+
+  // Defer panel showing until layout animation finishes
+  useEffect(() => {
+    if (showWeekly) {
+      const id = setTimeout(() => setShowWeeklyPanel(true), layoutDuration);
+      return () => clearTimeout(id);
+    }
+    setShowWeeklyPanel(false);
+  }, [showWeekly]);
 
   // Apply overrides (for testing)
   const finalKind = forceKindParam ?? effectKind;
@@ -324,6 +340,16 @@ export default function WeatherClient() {
     finalType,
   });
   
+  const weeklyButtonLabel = showWeeklyPanel
+    ? "Hide weekly forecast"
+    : "Show weekly forecast";
+
+  const handleToggleWeekly = () => {
+    if (!weather?.daily?.length) return;
+    const next = !showWeekly;
+    setShowWeekly(next);
+    setShowWeeklyPanel(false);
+  };
 
   // ---------- RENDER ----------
 
@@ -365,7 +391,7 @@ export default function WeatherClient() {
         <header className="pt-6 px-4 flex items-center justify-between">
           <button
             onClick={() => router.push("/")}
-            className="text-sm text-neutral-100/90 underline underline-offset-4"
+            className="text-sm px-3 py-1.5 rounded-lg bg-black/60 border border-white/30 text-white shadow hover:bg-black/70 transition"
           >
             ← Change location
           </button>
@@ -375,89 +401,165 @@ export default function WeatherClient() {
           </span>
         </header>
 
-        <section className="flex-1 grid place-content-center px-4 py-8">
-          <motion.div
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.35 }}
-            className="w-full max-w-md rounded-2xl border border-white/20 bg-black/60 text-white p-6 shadow-lg backdrop-blur"
-          >
-            {loading && (
-              <p className="text-sm text-neutral-100/90">
-                Loading weather for{" "}
-                <span className="font-semibold">{name}</span>...
-              </p>
-            )}
-
-            {error && (
-              <p className="text-sm text-red-400">
-                {error}
-              </p>
-            )}
-
-            {!loading && !error && weather && (
-              <>
-                <h1 className="text-xl font-semibold mb-1">
-                  {name}
-                </h1>
-
-                <p className="text-xs text-neutral-100/70 mb-4 capitalize">
-                  {weather.current?.description ?? "Current conditions"}
+        <motion.section
+          layout
+          transition={{ layout: { duration: layoutDuration / 1000, ease: "easeInOut" } }}
+          className={
+            showWeekly
+              ? "flex-1 px-4 py-7 flex flex-col gap-6 lg:flex-row lg:items-start lg:gap-8"
+              : "flex-1 grid place-content-center px-4 py-8"
+          }
+        >
+          <motion.div layout className="w-full max-w-md flex flex-col gap-6">
+            <motion.div
+              layout
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: layoutDuration / 1000 }}
+              className="w-full rounded-2xl border border-white/20 bg-black/60 text-white p-6 shadow-lg backdrop-blur"
+            >
+              {loading && (
+                <p className="text-sm text-neutral-100/90">
+                  Loading weather for{" "}
+                  <span className="font-semibold">{name}</span>...
                 </p>
+              )}
 
-                <div className="flex items-baseline gap-2 mb-4">
-                  <span className="text-5xl font-bold">
-                    {weather.current?.temp != null
-                      ? Math.round(weather.current.temp)
-                      : "--"}
-                  </span>
-                  <span className="text-lg">
-                    {units === "imperial" ? "°F" : "°C"}
-                  </span>
-                </div>
+              {error && (
+                <p className="text-sm text-red-400">
+                  {error}
+                </p>
+              )}
 
-                <div className="grid grid-cols-2 gap-4 text-sm">
-                  <div>
-                    <p className="text-neutral-100/70">
-                      Feels like
-                    </p>
-                    <p className="font-semibold">
-                      {weather.current?.feels_like != null
-                        ? Math.round(weather.current.feels_like)
+              {!loading && !error && weather && (
+                <>
+                  <h1 className="text-xl font-semibold mb-1">
+                    {name}
+                  </h1>
+
+                  <p className="text-xs text-neutral-100/70 mb-4 capitalize">
+                    {weather.current?.description ?? "Current conditions"}
+                  </p>
+
+                  <div className="flex items-baseline gap-2 mb-4">
+                    <span className="text-5xl font-bold">
+                      {weather.current?.temp != null
+                        ? Math.round(weather.current.temp)
                         : "--"}
-                      {weather.current?.feels_like != null &&
-                        (units === "imperial" ? "°F" : "°C")}
-                    </p>
+                    </span>
+                    <span className="text-lg">
+                      {units === "imperial" ? "°F" : "°C"}
+                    </span>
                   </div>
 
-                  <div>
-                    <p className="text-neutral-100/70">
-                      Humidity
-                    </p>
-                    <p className="font-semibold">
-                      {weather.current?.humidity != null
-                        ? `${weather.current.humidity}%`
-                        : "--"}
-                    </p>
-                  </div>
+                    <div className="grid grid-cols-2 gap-4 text-sm">
+                      <div>
+                        <p className="text-neutral-100/70">
+                          Feels like
+                        </p>
+                        <p className="font-semibold">
+                          {weather.current?.feels_like != null
+                            ? Math.round(weather.current.feels_like)
+                            : "--"}
+                          {weather.current?.feels_like != null &&
+                            (units === "imperial" ? "°F" : "°C")}
+                        </p>
+                      </div>
 
-                  <div>
-                    <p className="text-neutral-100/70">
-                      Wind speed
-                    </p>
-                    <p className="font-semibold">
-                      {weather.current?.wind_speed != null
-                        ? `${weather.current.wind_speed} ${
-                            units === "imperial" ? "mph" : "m/s"
-                          }`
-                        : "--"}
-                    </p>
-                  </div>
-                </div>
-              </>
-            )}
+                      <div>
+                        <p className="text-neutral-100/70">
+                          Humidity
+                        </p>
+                        <p className="font-semibold">
+                          {weather.current?.humidity != null
+                            ? `${weather.current.humidity}%`
+                            : "--"}
+                        </p>
+                      </div>
+
+                      <div>
+                        <p className="text-neutral-100/70">
+                          Wind speed
+                        </p>
+                        <p className="font-semibold">
+                          {weather.current?.wind_speed != null
+                            ? `${weather.current.wind_speed} ${
+                                units === "imperial" ? "mph" : "m/s"
+                              }`
+                            : "--"}
+                        </p>
+                      </div>
+                    </div>
+                </>
+              )}
+            </motion.div>
+
+            <div className="flex justify-start w-full">
+              <button
+                disabled={!weather?.daily?.length}
+                onClick={handleToggleWeekly}
+                className="text-sm w-full max-w-md px-5 py-3 rounded-xl border border-white/30 bg-white/10 text-white/90 shadow hover:bg-white/20 transition disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                {weeklyButtonLabel}
+              </button>
+            </div>
           </motion.div>
-        </section>
+
+          {showWeeklyPanel && weather?.daily?.length ? (
+            <motion.div
+              layout
+              transition={{ layout: { duration: layoutDuration / 1000, ease: "easeInOut" } }}
+              className="mt-6 lg:mt-0 w-full lg:flex-1 max-w-5xl lg:max-w-none mx-auto rounded-2xl border border-white/20 bg-black/40 text-white/90 p-6 shadow backdrop-blur"
+            >
+              <p className="text-xs uppercase tracking-wide text-white/60 mb-3">
+                7-day outlook
+              </p>
+              <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3">
+                {weather.daily.slice(0, 7).map((day, idx) => {
+                  const date = new Date(day.dt * 1000);
+                  const label = date.toLocaleDateString(undefined, {
+                    weekday: "short",
+                  });
+                  const pop = day.pop != null ? Math.round(day.pop * 100) : null;
+                  const iconCode = day.icon ?? "";
+                  const iconUrl = iconCode
+                    ? `https://openweathermap.org/img/wn/${iconCode}@2x.png`
+                    : null;
+                  const isSnow = iconCode.startsWith("13");
+                  const precipLabel =
+                    pop != null ? `${pop}% ${isSnow ? "snow" : "rain"}` : "—";
+                  return (
+                    <div
+                      key={`${day.dt}-${idx}`}
+                      className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm"
+                    >
+                      <p className="font-semibold">{label}</p>
+                      <div className="flex items-center gap-2 text-xs text-white/80">
+                        {iconUrl ? (
+                          <img
+                            src={iconUrl}
+                            alt={iconCode}
+                            className="h-8 w-8 object-contain drop-shadow"
+                            loading="lazy"
+                          />
+                        ) : (
+                          <span role="img" aria-label="weather" className="text-lg">
+                            {isSnow ? "❄️" : "🌧️"}
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-white/70 text-xs">
+                        {day.min != null ? Math.round(day.min) : "--"}° /{" "}
+                        {day.max != null ? Math.round(day.max) : "--"}°
+                        {units === "imperial" ? "F" : "C"}
+                      </p>
+                    </div>
+                  );
+                })}
+              </div>
+            </motion.div>
+          ) : null}
+        </motion.section>
       </div>
     </main>
   );
