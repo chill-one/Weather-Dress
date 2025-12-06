@@ -19,7 +19,7 @@ const FALLBACK_BG_DATA_URL =
   "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR4nGMAAQAABQABDQottAAAAABJRU5ErkJggg==";
 
 const RainEffect = (props) => {
-  const { type = "rain", backgroundImageUrl } = props || {};
+  const { type = "rain", backgroundImageUrl, intensity } = props || {};
 
   let canvas,
     dropAlpha,
@@ -59,6 +59,34 @@ const RainEffect = (props) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [backgroundImageUrl, type]);
 
+  // Create a subtle gradient/texture so raindrops are visible when no background is provided
+  const createFallbackTexture = () => {
+    const size = 512;
+    const fallbackCanvas = createCanvas(size, size);
+    const ctx = fallbackCanvas.getContext("2d");
+
+    if (!ctx) return fallbackCanvas;
+
+    const gradient = ctx.createLinearGradient(0, 0, 0, size);
+    gradient.addColorStop(0, "#0f172a");
+    gradient.addColorStop(1, "#1f2937");
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, size, size);
+
+    // Add a light noise layer for extra refraction detail
+    const noiseDensity = 0.08;
+    ctx.fillStyle = "rgba(255, 255, 255, 0.04)";
+    for (let x = 0; x < size; x += 4) {
+      for (let y = 0; y < size; y += 4) {
+        if (Math.random() < noiseDensity) {
+          ctx.fillRect(x, y, 2, 2);
+        }
+      }
+    }
+
+    return fallbackCanvas;
+  };
+
   // Set the background image and initialize rain effect after image loads
   const setBackgroundImage = (url, weatherType) => {
     if (typeof window === "undefined") return;
@@ -67,22 +95,31 @@ const RainEffect = (props) => {
     img.crossOrigin = "anonymous";
     img.src = url;
 
-    img.onload = () => {
-      backgroundImage = img;
-
+    const finishInit = () => {
       textureFgSize = {
-        width: backgroundImage.naturalWidth || 100,
-        height: backgroundImage.naturalHeight || 100,
+        width: backgroundImage.naturalWidth || backgroundImage.width || 100,
+        height: backgroundImage.naturalHeight || backgroundImage.height || 100,
       };
       textureBgSize = {
-        width: backgroundImage.naturalWidth || 100,
-        height: backgroundImage.naturalHeight || 100,
+        width: textureFgSize.width,
+        height: textureFgSize.height,
       };
 
       // Once the image is loaded and sizes are known, load textures + init
       loadTextures().then(() => {
         init(weatherType);
       });
+    };
+
+    img.onload = () => {
+      backgroundImage = img;
+      finishInit();
+    };
+
+    img.onerror = () => {
+      // Fall back to an internally generated texture so the rain remains visible
+      backgroundImage = createFallbackTexture();
+      finishInit();
     };
   };
 
@@ -100,6 +137,22 @@ const RainEffect = (props) => {
   const init = (weatherType = "rain") => {
     // normalize type to what weatherData expects (likely all lowercase)
     const normalizedType = (weatherType || "rain").toLowerCase();
+    const baseWeatherData = weatherData[normalizedType] || weatherData.rain;
+    const clampedIntensity = Math.max(
+      0.2,
+      Math.min(intensity ?? baseWeatherData.intensity ?? 1, 1.5)
+    );
+
+    const scaledWeatherData = {
+      ...baseWeatherData,
+      intensity: clampedIntensity,
+      rainChance: baseWeatherData.rainChance * clampedIntensity,
+      rainLimit: Math.max(
+        1,
+        Math.round(baseWeatherData.rainLimit * clampedIntensity)
+      ),
+      drizzle: Math.round(baseWeatherData.drizzle * clampedIntensity),
+    };
 
     canvas = document.querySelector("#container-weather");
     if (!canvas) return;
@@ -163,7 +216,7 @@ const RainEffect = (props) => {
     );
 
     curWeatherData = {
-      ...weatherData[normalizedType],
+      ...scaledWeatherData,
       fg: backgroundImage,
       bg: backgroundImage,
     };
