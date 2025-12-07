@@ -41,7 +41,32 @@ type WeatherEffectProps = {
   intesity?: number;
 };
 
-type OutfitItem = { id: string; label: string };
+type OutfitItem = {
+  id: string;
+  label: string;
+  image_url?: string | null;
+  brand?: string | null;
+  store_url?: string | null;
+  description?: string | null;
+  color?: string | null;
+  warmth_score?: number | null;
+  water_resistance?: "none" | "resistant" | "waterproof" | null;
+  wind_block?: "low" | "medium" | "high" | null;
+  breathability?: "low" | "medium" | "high" | null;
+  coverage_top?: "none" | "short_sleeve" | "long_sleeve" | "jacket" | null;
+  coverage_bottom?: "shorts" | "full_length" | null;
+  footwear_type?: "open" | "closed" | "boot" | null;
+  min_temp_c?: number | null;
+  max_temp_c?: number | null;
+};
+type OutfitSearchResult = {
+  label: string;
+  image_url?: string;
+  brand?: string;
+  store_url?: string;
+  description?: string | null;
+  color?: string | null;
+};
 
 // ---------- BACKGROUND GRADIENT + VANTA CONFIG ----------
 
@@ -145,18 +170,44 @@ async function fetchOutfits(userKey: string) {
   return data;
 }
 
-async function addOutfit(userKey: string, category: OutfitCategory, label: string) {
+async function addOutfit(
+  userKey: string,
+  category: OutfitCategory,
+  label: string,
+  extras?: {
+    image_url?: string;
+    brand?: string;
+    store_url?: string;
+    description?: string | null;
+    color?: string | null;
+    warmth_score?: number | null;
+    water_resistance?: string | null;
+    wind_block?: string | null;
+    breathability?: string | null;
+    coverage_top?: string | null;
+    coverage_bottom?: string | null;
+    footwear_type?: string | null;
+    min_temp_c?: number | null;
+    max_temp_c?: number | null;
+  }
+) {
   const { data, error } = await supabase
     .from("outfit_items")
-    .insert([{ user_key: userKey, category, label }])
+    .insert([{ user_key: userKey, category, label, ...(extras || {}) }])
     .select()
     .single();
   if (error) {
-    console.error("supabase addOutfit error", {
-      message: error.message,
-      details: error.details,
-      hint: error.hint,
-    });
+    console.error(
+      "supabase addOutfit error",
+      {
+        message: error.message,
+        details: error.details,
+        hint: error.hint,
+        code: (error as any).code,
+      },
+      "raw:",
+      JSON.stringify(error, Object.getOwnPropertyNames(error), 2)
+    );
     throw error;
   }
   return data;
@@ -294,6 +345,37 @@ export default function WeatherClient() {
     if (typeof window === "undefined") return "";
     return localStorage.getItem("outfit_user_key") || "";
   });
+  const [showSearchModal, setShowSearchModal] = useState(false);
+  const [searchCategory, setSearchCategory] = useState<OutfitCategory | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<OutfitSearchResult[]>([]);
+  const [searching, setSearching] = useState(false);
+  const [searchError, setSearchError] = useState<string | null>(null);
+  const [showDetailsModal, setShowDetailsModal] = useState(false);
+  const [pendingItem, setPendingItem] = useState<OutfitSearchResult | null>(null);
+  const [pendingCategory, setPendingCategory] = useState<OutfitCategory | null>(null);
+  const [pendingDescription, setPendingDescription] = useState("");
+  const [pendingWarmth, setPendingWarmth] = useState(5);
+  const [pendingWater, setPendingWater] = useState<"none" | "resistant" | "waterproof">("none");
+  const [pendingWind, setPendingWind] = useState<"low" | "medium" | "high">("low");
+  const [pendingBreath, setPendingBreath] = useState<"low" | "medium" | "high">("medium");
+  const [pendingTop, setPendingTop] = useState<"none" | "short_sleeve" | "long_sleeve" | "jacket">("short_sleeve");
+  const [pendingBottom, setPendingBottom] = useState<"shorts" | "full_length">("full_length");
+  const [pendingFoot, setPendingFoot] = useState<"open" | "closed" | "boot">("closed");
+  const [pendingTempMin, setPendingTempMin] = useState(10);
+  const [pendingTempMax, setPendingTempMax] = useState(20);
+  const [pendingColor, setPendingColor] = useState("");
+
+  const outfitSections: Array<{
+    title: string;
+    kind: OutfitCategory;
+    items: OutfitItem[];
+  }> = [
+    { title: "Upper", kind: "upper", items: upperItems },
+    { title: "Lower", kind: "lower", items: lowerItems },
+    { title: "Accessories", kind: "accessories", items: accessoriesItems },
+    { title: "Shoes", kind: "shoes", items: shoesItems },
+  ];
 
   // Animation timing (ms). Adjust here to change speed globally.
   const layoutDuration = 350;
@@ -395,10 +477,94 @@ export default function WeatherClient() {
     if (!userKey) return;
     fetchOutfits(userKey)
       .then((rows) => {
-        setUpperItems(rows.filter((r) => r.category === "upper").map((r) => ({ id: r.id, label: r.label })));
-        setLowerItems(rows.filter((r) => r.category === "lower").map((r) => ({ id: r.id, label: r.label })));
-        setAccessoriesItems(rows.filter((r) => r.category === "accessories").map((r) => ({ id: r.id, label: r.label })));
-        setShoesItems(rows.filter((r) => r.category === "shoes").map((r) => ({ id: r.id, label: r.label })));
+        setUpperItems(
+          rows
+            .filter((r) => r.category === "upper")
+            .map((r) => ({
+              id: r.id,
+              label: r.label,
+              image_url: (r as any).image_url ?? null,
+              brand: (r as any).brand ?? null,
+              store_url: (r as any).store_url ?? null,
+              color: (r as any).color ?? null,
+              description: (r as any).description ?? null,
+              warmth_score: (r as any).warmth_score ?? null,
+              water_resistance: (r as any).water_resistance ?? null,
+              wind_block: (r as any).wind_block ?? null,
+              breathability: (r as any).breathability ?? null,
+              coverage_top: (r as any).coverage_top ?? null,
+              coverage_bottom: (r as any).coverage_bottom ?? null,
+              footwear_type: (r as any).footwear_type ?? null,
+              min_temp_c: (r as any).min_temp_c ?? null,
+              max_temp_c: (r as any).max_temp_c ?? null,
+            }))
+        );
+        setLowerItems(
+          rows
+            .filter((r) => r.category === "lower")
+            .map((r) => ({
+              id: r.id,
+              label: r.label,
+              image_url: (r as any).image_url ?? null,
+              brand: (r as any).brand ?? null,
+              store_url: (r as any).store_url ?? null,
+              color: (r as any).color ?? null,
+              description: (r as any).description ?? null,
+              warmth_score: (r as any).warmth_score ?? null,
+              water_resistance: (r as any).water_resistance ?? null,
+              wind_block: (r as any).wind_block ?? null,
+              breathability: (r as any).breathability ?? null,
+              coverage_top: (r as any).coverage_top ?? null,
+              coverage_bottom: (r as any).coverage_bottom ?? null,
+              footwear_type: (r as any).footwear_type ?? null,
+              min_temp_c: (r as any).min_temp_c ?? null,
+              max_temp_c: (r as any).max_temp_c ?? null,
+            }))
+        );
+        setAccessoriesItems(
+          rows
+            .filter((r) => r.category === "accessories")
+            .map((r) => ({
+              id: r.id,
+              label: r.label,
+              image_url: (r as any).image_url ?? null,
+              brand: (r as any).brand ?? null,
+              store_url: (r as any).store_url ?? null,
+              color: (r as any).color ?? null,
+              description: (r as any).description ?? null,
+              warmth_score: (r as any).warmth_score ?? null,
+              water_resistance: (r as any).water_resistance ?? null,
+              wind_block: (r as any).wind_block ?? null,
+              breathability: (r as any).breathability ?? null,
+              coverage_top: (r as any).coverage_top ?? null,
+              coverage_bottom: (r as any).coverage_bottom ?? null,
+              footwear_type: (r as any).footwear_type ?? null,
+              min_temp_c: (r as any).min_temp_c ?? null,
+              max_temp_c: (r as any).max_temp_c ?? null,
+            }))
+        );
+        setShoesItems(
+          rows
+            .filter((r) => r.category === "shoes")
+            .map((r) => ({
+              id: r.id,
+              label: r.label,
+              image_url: (r as any).image_url ?? null,
+              brand: (r as any).brand ?? null,
+              store_url: (r as any).store_url ?? null,
+              color: (r as any).color ?? null,
+              description: (r as any).description ?? null,
+              warmth_score: (r as any).warmth_score ?? null,
+              water_resistance: (r as any).water_resistance ?? null,
+              wind_block: (r as any).wind_block ?? null,
+              breathability: (r as any).breathability ?? null,
+              coverage_top: (r as any).coverage_top ?? null,
+              coverage_bottom: (r as any).coverage_bottom ?? null,
+              footwear_type: (r as any).footwear_type ?? null,
+              min_temp_c: (r as any).min_temp_c ?? null,
+              max_temp_c: (r as any).max_temp_c ?? null,
+            }))
+        );
       })
       .catch((err) => console.error("fetch outfits", err));
   }, [userKey]);
@@ -458,31 +624,167 @@ export default function WeatherClient() {
     }
   };
 
-  const handleAddItem = async (kind: OutfitCategory) => {
-    const value = typeof window !== "undefined" ? window.prompt("Add an item") : null;
-    if (!value) return;
-    const trimmed = value.trim();
-    if (!trimmed || !userKey) return;
+  const openSearch = (kind: OutfitCategory) => {
+    setSearchCategory(kind);
+    setShowSearchModal(true);
+    setSearchResults([]);
+    setSearchQuery("");
+    setSearchError(null);
+  };
+
+  const handleSearch = async () => {
+    if (!searchQuery.trim()) return;
+    setSearching(true);
+    setSearchError(null);
     try {
-      const row = await addOutfit(userKey, kind, trimmed);
-      const entry = { id: row.id, label: row.label };
-      switch (kind) {
-        case "upper":
-          setUpperItems((items) => [...items, entry]);
-          break;
-        case "lower":
-          setLowerItems((items) => [...items, entry]);
-          break;
-        case "accessories":
-          setAccessoriesItems((items) => [...items, entry]);
-          break;
-        case "shoes":
-          setShoesItems((items) => [...items, entry]);
-          break;
-      }
-    } catch (err) {
-      console.error("add outfit", err);
+      const res = await fetch(
+        `/api/outfits/search?q=${encodeURIComponent(searchQuery)}&category=${searchCategory ?? ""}`
+      );
+      if (!res.ok) throw new Error(`Search failed: ${res.status}`);
+      const body = await res.json();
+      setSearchResults(body.items ?? []);
+    } catch (err: any) {
+      console.error("search outfits", err);
+      setSearchError("Search failed. Try again.");
+      // fallback demo data
+      setSearchResults([
+        {
+          label: `${searchQuery} (demo)`,
+          image_url: "https://via.placeholder.com/128?text=Item",
+          brand: "Demo Brand",
+          store_url: "https://example.com",
+        },
+      ]);
+    } finally {
+      setSearching(false);
     }
+  };
+
+  const handleSelectSearchResult = async (item: OutfitSearchResult) => {
+    if (!searchCategory) return;
+    setPendingCategory(searchCategory);
+    setPendingItem(item);
+    setPendingDescription(item.description ?? "");
+    setPendingColor(item.color ?? "");
+    setPendingWarmth(5);
+    setPendingWater("none");
+    setPendingWind("low");
+    setPendingBreath("medium");
+    setPendingTop("short_sleeve");
+    setPendingBottom("full_length");
+    setPendingFoot("closed");
+    setPendingTempMin(10);
+    setPendingTempMax(20);
+    setShowDetailsModal(true);
+  };
+
+  const renderOutfitRow = (title: string, kind: OutfitCategory, items: OutfitItem[]) => (
+    <div key={title} className="space-y-2 pb-1">
+      <p className="text-xs uppercase tracking-wide text-white/70">{title}</p>
+
+      <div className="flex items-center gap-3 overflow-x-auto">
+        <button
+          onClick={() => openSearch(kind)}
+          className="h-8 w-8 rounded-full border border-white/30 bg-white/15 text-white text-lg leading-none flex items-center justify-center hover:bg-white/25 transition"
+          aria-label={`Add ${title}`}
+        >
+          +
+        </button>
+
+        {items.map((item) => (
+          <div key={item.id} className="flex flex-col items-center gap-1">
+            <div
+              className="h-14 w-14 rounded-full border border-white/15 bg-gradient-to-br from-white/15 to-white/5 flex items-center justify-center text-[11px] text-white/90 text-center px-2 overflow-hidden"
+              title={item.label}
+            >
+              {item.image_url ? (
+                <img src={item.image_url} alt={item.label} className="h-full w-full object-cover" />
+              ) : (
+                <span className="line-clamp-2 leading-tight">{item.label}</span>
+              )}
+            </div>
+            <button
+              onClick={() => handleRemoveItem(kind, item.id)}
+              className="text-[10px] px-2 py-0.5 rounded-full border border-white/20 text-white/70 hover:bg-white/10 transition"
+              aria-label={`Remove ${item.label}`}
+            >
+              ×
+            </button>
+          </div>
+        ))}
+
+        {!items.length && <p className="text-xs text-white/60">No items yet</p>}
+      </div>
+    </div>
+  );
+
+  const renderSearchModal = () => {
+    if (!showSearchModal) return null;
+
+    return (
+      <motion.div
+        className="fixed inset-0 z-50 flex items-center justify-center px-4"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+      >
+        <div className="absolute inset-0 bg-black/60 backdrop-blur" onClick={() => setShowSearchModal(false)} />
+
+        <div className="relative z-10 w-full max-w-2xl rounded-2xl border border-white/20 bg-black/80 text-white shadow-2xl p-6 space-y-4">
+          <div className="flex items-center justify-between">
+            <h3 className="text-lg font-semibold">Add item to {searchCategory}</h3>
+            <button onClick={() => setShowSearchModal(false)} className="text-sm text-white/70 hover:text-white">
+              Close
+            </button>
+          </div>
+
+          <div className="flex gap-3">
+            <input
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search (e.g., black Nike hoodie)"
+              className="flex-1 rounded-lg bg-white/10 border border-white/20 px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-white/30"
+            />
+            <button
+              onClick={handleSearch}
+              disabled={searching}
+              className="px-4 py-2 rounded-lg bg-white/15 border border-white/30 text-sm hover:bg-white/25 transition disabled:opacity-50"
+            >
+              {searching ? "Searching..." : "Search"}
+            </button>
+          </div>
+
+          {searchError && <p className="text-xs text-red-300">{searchError}</p>}
+
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 max-h-96 overflow-y-auto">
+            {searchResults.map((item, idx) => (
+              <button
+                key={`${item.label}-${idx}`}
+                onClick={() => handleSelectSearchResult(item)}
+                className="group text-left rounded-xl border border-white/15 bg-white/5 hover:bg-white/10 transition p-3 flex flex-col gap-2"
+              >
+                <div className="w-full aspect-square rounded-lg overflow-hidden bg-white/10 border border-white/10 flex items-center justify-center">
+                  {item.image_url ? (
+                    <img src={item.image_url} alt={item.label} className="h-full w-full object-cover" />
+                  ) : (
+                    <span className="text-xs text-white/70">No image</span>
+                  )}
+                </div>
+
+                <div className="space-y-1">
+                  <p className="text-sm font-semibold line-clamp-2">{item.label}</p>
+                  {item.brand && <p className="text-xs text-white/60">{item.brand}</p>}
+                </div>
+              </button>
+            ))}
+
+            {!searchResults.length && !searching && (
+              <p className="text-xs text-white/60">Search to see results.</p>
+            )}
+          </div>
+        </div>
+      </motion.div>
+    );
   };
 
   // ---------- RENDER ----------
@@ -636,7 +938,7 @@ export default function WeatherClient() {
               >
                 {weeklyButtonLabel}
               </button>
-            </div>
+        </div>
 
             {showWeeklyPanel && (
               <motion.div
@@ -653,56 +955,281 @@ export default function WeatherClient() {
                     curated
                   </span>
                 </div>
-                {[
-                  { title: "Upper", items: upperItems, kind: "upper" as const },
-                  { title: "Lower", items: lowerItems, kind: "lower" as const },
-                  {
-                    title: "Accessories",
-                    items: accessoriesItems,
-                    kind: "accessories" as const,
-                  },
-                  { title: "Shoes", items: shoesItems, kind: "shoes" as const },
-                ].map(({ title, items, kind }) => (
-                  <div key={title} className="space-y-2 pb-1">
-                    <p className="text-xs uppercase tracking-wide text-white/70">
-                      {title}
-                    </p>
-                    <div className="flex items-center gap-3 overflow-x-auto">
-                      <button
-                        onClick={() => handleAddItem(kind)}
-                        className="h-8 w-8 rounded-full border border-white/30 bg-white/15 text-white text-lg leading-none flex items-center justify-center hover:bg-white/25 transition"
-                        aria-label={`Add ${title}`}
-                      >
-                        +
-                      </button>
-                      {items.map((item) => (
-                        <div key={item.id} className="flex flex-col items-center gap-1">
-                          <div
-                            className="h-14 w-14 rounded-full border border-white/15 bg-gradient-to-br from-white/15 to-white/5 flex items-center justify-center text-[11px] text-white/90 text-center px-2"
-                            title={item.label}
-                          >
-                            <span className="line-clamp-2 leading-tight">
-                              {item.label}
-                            </span>
-                          </div>
-                          <button
-                            onClick={() => handleRemoveItem(kind, item.id)}
-                            className="text-[10px] px-2 py-0.5 rounded-full border border-white/20 text-white/70 hover:bg-white/10 transition"
-                            aria-label={`Remove ${item.label}`}
-                          >
-                            ×
-                          </button>
-                        </div>
-                      ))}
-                      {!items.length && (
-                        <p className="text-xs text-white/60">No items yet</p>
-                      )}
-                    </div>
-                  </div>
-                ))}
+                {outfitSections.map(({ title, kind, items }) => renderOutfitRow(title, kind, items))}
               </motion.div>
             )}
           </motion.div>
+
+          {renderSearchModal()}
+          {showDetailsModal && (
+            <motion.div
+              className="fixed inset-0 z-50 flex items-center justify-center px-4"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+            >
+              <div className="absolute inset-0 bg-black/60 backdrop-blur" onClick={() => setShowDetailsModal(false)} />
+              <div className="relative z-10 w-full max-w-2xl rounded-2xl border border-white/20 bg-black/85 text-white shadow-2xl p-6 space-y-4">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-lg font-semibold">Item details</h3>
+                  <button onClick={() => setShowDetailsModal(false)} className="text-sm text-white/70 hover:text-white">
+                    Close
+                  </button>
+                </div>
+
+                <p className="text-sm text-white/80">
+                  {pendingItem?.label} {pendingCategory ? `→ ${pendingCategory}` : ""}
+                </p>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
+                  <label className="space-y-1">
+                    <span className="text-white/70 text-xs">Color / variant</span>
+                    <input
+                      value={pendingColor}
+                      onChange={(e) => setPendingColor(e.target.value)}
+                      placeholder="e.g., Black, Navy, Beige"
+                      className="w-full rounded-lg bg-white/10 border border-white/20 px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-white/30"
+                    />
+                  </label>
+
+                  <label className="space-y-1">
+                    <span className="text-white/70 text-xs">Description</span>
+                    <textarea
+                      value={pendingDescription}
+                      onChange={(e) => setPendingDescription(e.target.value)}
+                      rows={3}
+                      className="w-full rounded-lg bg-white/10 border border-white/20 px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-white/30"
+                      placeholder="Optional"
+                    />
+                  </label>
+
+                  <label className="space-y-1">
+                    <span className="text-white/70 text-xs">Warmth score (1–10)</span>
+                    <input
+                      type="range"
+                      min={1}
+                      max={10}
+                      value={pendingWarmth}
+                      onChange={(e) => setPendingWarmth(Number(e.target.value))}
+                      className="w-full"
+                    />
+                    <span className="text-white/80 text-xs">Current: {pendingWarmth}</span>
+                  </label>
+
+                  <label className="space-y-1">
+                    <span className="text-white/70 text-xs">Water resistance</span>
+                    <select
+                      value={pendingWater}
+                      onChange={(e) => setPendingWater(e.target.value as any)}
+                      className="w-full rounded-lg bg-white/10 border border-white/20 px-3 py-2 text-sm text-white"
+                    >
+                      <option value="none">None</option>
+                      <option value="resistant">Resistant</option>
+                      <option value="waterproof">Waterproof</option>
+                    </select>
+                  </label>
+
+                  <label className="space-y-1">
+                    <span className="text-white/70 text-xs">Wind block</span>
+                    <select
+                      value={pendingWind}
+                      onChange={(e) => setPendingWind(e.target.value as any)}
+                      className="w-full rounded-lg bg-white/10 border border-white/20 px-3 py-2 text-sm text-white"
+                    >
+                      <option value="low">Low</option>
+                      <option value="medium">Medium</option>
+                      <option value="high">High</option>
+                    </select>
+                  </label>
+
+                  <label className="space-y-1">
+                    <span className="text-white/70 text-xs">Breathability</span>
+                    <select
+                      value={pendingBreath}
+                      onChange={(e) => setPendingBreath(e.target.value as any)}
+                      className="w-full rounded-lg bg-white/10 border border-white/20 px-3 py-2 text-sm text-white"
+                    >
+                      <option value="low">Low</option>
+                      <option value="medium">Medium</option>
+                      <option value="high">High</option>
+                    </select>
+                  </label>
+
+                  {pendingCategory === "upper" && (
+                    <label className="space-y-1">
+                      <span className="text-white/70 text-xs">Coverage (top)</span>
+                      <select
+                        value={pendingTop}
+                        onChange={(e) => setPendingTop(e.target.value as any)}
+                        className="w-full rounded-lg bg-white/10 border border-white/20 px-3 py-2 text-sm text-white"
+                      >
+                        <option value="none">None</option>
+                        <option value="short_sleeve">Short sleeve</option>
+                        <option value="long_sleeve">Long sleeve</option>
+                        <option value="jacket">Jacket</option>
+                      </select>
+                    </label>
+                  )}
+
+                  {pendingCategory === "lower" && (
+                    <label className="space-y-1">
+                      <span className="text-white/70 text-xs">Coverage (bottom)</span>
+                      <select
+                        value={pendingBottom}
+                        onChange={(e) => setPendingBottom(e.target.value as any)}
+                        className="w-full rounded-lg bg-white/10 border border-white/20 px-3 py-2 text-sm text-white"
+                      >
+                        <option value="shorts">Shorts</option>
+                        <option value="full_length">Full length</option>
+                      </select>
+                    </label>
+                  )}
+
+                  {pendingCategory === "shoes" && (
+                    <label className="space-y-1">
+                      <span className="text-white/70 text-xs">Footwear type</span>
+                      <select
+                        value={pendingFoot}
+                        onChange={(e) => setPendingFoot(e.target.value as any)}
+                        className="w-full rounded-lg bg-white/10 border border-white/20 px-3 py-2 text-sm text-white"
+                      >
+                        <option value="open">Open</option>
+                        <option value="closed">Closed</option>
+                        <option value="boot">Boot</option>
+                      </select>
+                    </label>
+                  )}
+
+                  <div className="space-y-2 sm:col-span-2">
+                    <div className="flex items-center justify-between text-white/70 text-xs">
+                      <span className="flex items-center gap-2">
+                        Preferred temperature range (°C)
+                        <span className="text-lg">
+                          {((pendingTempMin + pendingTempMax) / 2 || 0) < 5
+                            ? "❄️"
+                            : ((pendingTempMin + pendingTempMax) / 2 || 0) < 15
+                            ? "🧥"
+                            : ((pendingTempMin + pendingTempMax) / 2 || 0) < 25
+                            ? "👕"
+                            : "☀️"}
+                        </span>
+                      </span>
+                      <span className="flex items-center gap-2 text-white/60">
+                        <span className="text-lg">❄️</span>
+                        <span>colder</span>
+                        <span className="text-lg">☀️</span>
+                        <span>hotter</span>
+                      </span>
+                    </div>
+                    <div className="space-y-1">
+                      <label className="flex items-center gap-3">
+                        <span className="text-white/60 text-xs w-16">Min</span>
+                        <input
+                          type="range"
+                          min={-20}
+                          max={50}
+                          value={pendingTempMin}
+                          onChange={(e) => {
+                            const v = Number(e.target.value);
+                            setPendingTempMin(Math.min(v, pendingTempMax));
+                          }}
+                          className="flex-1"
+                        />
+                        <span className="text-white text-xs w-12 text-right">{pendingTempMin}°</span>
+                      </label>
+                      <label className="flex items-center gap-3">
+                        <span className="text-white/60 text-xs w-16">Max</span>
+                        <input
+                          type="range"
+                          min={-20}
+                          max={50}
+                          value={pendingTempMax}
+                          onChange={(e) => {
+                            const v = Number(e.target.value);
+                            setPendingTempMax(Math.max(v, pendingTempMin));
+                          }}
+                          className="flex-1"
+                        />
+                        <span className="text-white text-xs w-12 text-right">{pendingTempMax}°</span>
+                      </label>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex justify-end gap-3">
+                  <button
+                    onClick={() => setShowDetailsModal(false)}
+                    className="px-4 py-2 rounded-lg border border-white/20 text-sm text-white/80 hover:bg-white/10 transition"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={async () => {
+                      if (!pendingItem || !pendingCategory || !userKey) return;
+                      try {
+                        const row = await addOutfit(userKey, pendingCategory, pendingItem.label, {
+                          image_url: pendingItem.image_url,
+                          brand: pendingItem.brand,
+                          store_url: pendingItem.store_url,
+                          description: pendingDescription || pendingItem.description || null,
+                          color: pendingColor || null,
+                          warmth_score: pendingWarmth,
+                          water_resistance: pendingWater,
+                          wind_block: pendingWind,
+                          breathability: pendingBreath,
+                          coverage_top: pendingTop,
+                          coverage_bottom: pendingBottom,
+                          footwear_type: pendingFoot,
+                          min_temp_c: pendingTempMin,
+                          max_temp_c: pendingTempMax,
+                        });
+                        const entry: OutfitItem = {
+                          id: row.id,
+                          label: row.label,
+                          image_url: (row as any).image_url ?? pendingItem.image_url ?? null,
+                          brand: (row as any).brand ?? pendingItem.brand ?? null,
+                          store_url: (row as any).store_url ?? pendingItem.store_url ?? null,
+                          description: (row as any).description ?? pendingDescription ?? pendingItem.description ?? null,
+                          color: (row as any).color ?? pendingColor ?? null,
+                          warmth_score: (row as any).warmth_score ?? pendingWarmth,
+                          water_resistance: (row as any).water_resistance ?? pendingWater,
+                          wind_block: (row as any).wind_block ?? pendingWind,
+                          breathability: (row as any).breathability ?? pendingBreath,
+                          coverage_top: (row as any).coverage_top ?? pendingTop,
+                          coverage_bottom: (row as any).coverage_bottom ?? pendingBottom,
+                          footwear_type: (row as any).footwear_type ?? pendingFoot,
+                          min_temp_c: (row as any).min_temp_c ?? pendingTempMin,
+                          max_temp_c: (row as any).max_temp_c ?? pendingTempMax,
+                        };
+                        switch (pendingCategory) {
+                          case "upper":
+                            setUpperItems((items) => [...items, entry]);
+                            break;
+                          case "lower":
+                            setLowerItems((items) => [...items, entry]);
+                            break;
+                          case "accessories":
+                            setAccessoriesItems((items) => [...items, entry]);
+                            break;
+                          case "shoes":
+                            setShoesItems((items) => [...items, entry]);
+                            break;
+                        }
+                        setShowDetailsModal(false);
+                        setShowSearchModal(false);
+                      } catch (err) {
+                        console.error("add outfit", err);
+                        setSearchError("Unable to save item. Check Supabase table/policies.");
+                      }
+                    }}
+                    className="px-4 py-2 rounded-lg bg-white/15 border border-white/30 text-sm hover:bg-white/25 transition"
+                  >
+                    Save item
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          )}
 
           {showWeeklyPanel && weather?.daily?.length ? (
             <motion.div
