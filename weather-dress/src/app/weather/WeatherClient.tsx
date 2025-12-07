@@ -311,6 +311,12 @@ function pickEffectConfig(
   return { kind: null };
 }
 
+function formatDayLabel(date: Date, idx: number) {
+  if (idx === 0) return "Today";
+  if (idx === 1) return "Tomorrow";
+  return date.toLocaleDateString(undefined, { weekday: "short" });
+}
+
 // ---------- COMPONENT ----------
 
 export default function WeatherClient() {
@@ -1232,58 +1238,123 @@ export default function WeatherClient() {
           )}
 
           {showWeeklyPanel && weather?.daily?.length ? (
-            <motion.div
-              layout
-              transition={{ layout: { duration: layoutDuration / 1000, ease: "easeInOut" } }}
-              className="mt-6 lg:mt-0 w-full lg:flex-1 max-w-5xl lg:max-w-none mx-auto rounded-2xl border border-white/20 bg-black/40 text-white/90 p-6 shadow backdrop-blur"
-            >
-              <p className="text-xs uppercase tracking-wide text-white/60 mb-3">
-                7-day outlook
-              </p>
-              <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3">
-                {weather.daily.slice(0, 7).map((day, idx) => {
-                  const date = new Date(day.dt * 1000);
-                  const label = date.toLocaleDateString(undefined, {
-                    weekday: "short",
-                  });
-                  const pop = day.pop != null ? Math.round(day.pop * 100) : null;
-                  const iconCode = day.icon ?? "";
-                  const iconUrl = iconCode
-                    ? `https://openweathermap.org/img/wn/${iconCode}@2x.png`
-                    : null;
-                  const isSnow = iconCode.startsWith("13");
-                  const precipLabel =
-                    pop != null ? `${pop}% ${isSnow ? "snow" : "rain"}` : "—";
-                  return (
-                    <div
-                      key={`${day.dt}-${idx}`}
-                      className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm"
-                    >
-                      <p className="font-semibold">{label}</p>
-                      <div className="flex items-center gap-2 text-xs text-white/80">
-                        {iconUrl ? (
-                          <img
-                            src={iconUrl}
-                            alt={iconCode}
-                            className="h-8 w-8 object-contain drop-shadow"
-                            loading="lazy"
-                          />
-                        ) : (
-                          <span role="img" aria-label="weather" className="text-lg">
-                            {isSnow ? "❄️" : "🌧️"}
-                          </span>
-                        )}
+            <div className="w-full max-w-5xl lg:max-w-none mx-auto space-y-6 mt-6">
+              <motion.div
+                layout
+                transition={{ layout: { duration: layoutDuration / 1000, ease: "easeInOut" } }}
+                className="w-full rounded-2xl border border-white/20 bg-black/40 text-white/90 p-6 shadow backdrop-blur"
+              >
+                <p className="text-xs uppercase tracking-wide text-white/60 mb-3">
+                  7-day outlook
+                </p>
+                <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3">
+                  {(weather.daily ?? [])
+                    .slice(0, 7)
+                    .map((day, idx) => {
+                      const date = new Date(day.dt * 1000);
+                      const label = formatDayLabel(date, idx);
+                      const pop = day.pop != null ? Math.round(day.pop * 100) : null;
+                      const iconCode = day.icon ?? "";
+                      const iconUrl = iconCode
+                        ? `https://openweathermap.org/img/wn/${iconCode}@2x.png`
+                        : null;
+                      const isSnow = iconCode.startsWith("13");
+                      const precipLabel =
+                        pop != null ? `${pop}% ${isSnow ? "snow" : "rain"}` : "—";
+                      return (
+                        <div
+                          key={`${day.dt}-${idx}`}
+                          className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm"
+                        >
+                          <p className="font-semibold">{label}</p>
+                          <div className="flex items-center gap-2 text-xs text-white/80">
+                            {iconUrl ? (
+                              <img
+                                src={iconUrl}
+                                alt={iconCode}
+                                className="h-8 w-8 object-contain drop-shadow"
+                                loading="lazy"
+                              />
+                            ) : (
+                              <span role="img" aria-label="weather" className="text-lg">
+                                {isSnow ? "❄️" : "🌧️"}
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-white/70 text-xs">
+                            {day.min != null ? Math.round(day.min) : "--"}° /{" "}
+                            {day.max != null ? Math.round(day.max) : "--"}°
+                            {units === "imperial" ? "F" : "C"}
+                          </p>
+                        </div>
+                      );
+                    })}
+                </div>
+              </motion.div>
+
+              <motion.div
+                layout
+                transition={{ layout: { duration: layoutDuration / 1000, ease: "easeInOut" } }}
+                className="w-full rounded-2xl border border-white/15 bg-black/50 text-white p-4 shadow backdrop-blur space-y-3"
+              >
+                <p className="text-xs uppercase tracking-wide text-white/60 mb-1">
+                  Outfit slots by day
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                  {(weather.daily ?? []).slice(0, 7).map((day, idx) => {
+                    const date = new Date(day.dt * 1000);
+                    const label = formatDayLabel(date, idx);
+                    const renderCategory = (title: string, items: OutfitItem[]) => (
+                      <div className="space-y-1">
+                        <p className="text-[11px] uppercase tracking-wide text-white/60">{title}</p>
+                        <div className="flex items-center gap-2 overflow-x-auto">
+                          {items.length ? (
+                            items.slice(0, 2).map((item) => (
+                              <div
+                                key={`${title}-${item.id}`}
+                                className="h-5 px-1 rounded-full border border-white/15 bg-white/5 text-[11px] flex items-center gap-2 text-white/90"
+                              >
+                                {item.image_url ? (
+                                  <img
+                                    src={item.image_url}
+                                    alt={item.label}
+                                    className="h-5 w-5 rounded-full object-cover"
+                                  />
+                                ) : null}
+                                <span className="line-clamp-1">{item.label}</span>
+                              </div>
+                            ))
+                          ) : (
+                            <span className="text-[11px] text-white/50">Add from wardrobe</span>
+                          )}
+                        </div>
                       </div>
-                      <p className="text-white/70 text-xs">
-                        {day.min != null ? Math.round(day.min) : "--"}° /{" "}
-                        {day.max != null ? Math.round(day.max) : "--"}°
-                        {units === "imperial" ? "F" : "C"}
-                      </p>
-                    </div>
-                  );
-                })}
-              </div>
-            </motion.div>
+                    );
+
+                    return (
+                      <div
+                        key={`planner-${day.dt}-${idx}`}
+                        className="rounded-xl border border-white/10 bg-white/5 p-3 space-y-2"
+                      >
+                        <div className="flex items-center justify-between text-sm font-semibold">
+                          <span>{label}</span>
+                          <span className="text-white/60 text-xs">
+                            {day.min != null ? Math.round(day.min) : "--"}° /{" "}
+                            {day.max != null ? Math.round(day.max) : "--"}°
+                          </span>
+                        </div>
+                        <div className="space-y-2">
+                          {renderCategory("Upper", upperItems)}
+                          {renderCategory("Lower", lowerItems)}
+                          {renderCategory("Accessories", accessoriesItems)}
+                          {renderCategory("Shoes", shoesItems)}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </motion.div>
+            </div>
           ) : null}
         </motion.section>
 
