@@ -1,0 +1,11 @@
+id,user_key,category,label,created_at
+abbb4305-e778-42a9-b323-479d1bcee8d3,guest-demo-123,upper,White T-Shirt,2025-12-06T15:30:00Z
+37cf41f5-d207-4056-9a34-afae66fe8f38,guest-demo-123,upper,Black Hoodie,2025-12-06T15:35:00Z
+fee0a0cf-86d8-40bf-ab78-3e1d1e3fd7e2,guest-demo-123,upper,Blue Oxford Shirt,2025-12-06T15:40:00Z
+c6773c91-537c-4d1c-986b-50e1abb43842,guest-demo-123,lower,Black Jeans,2025-12-06T15:45:00Z
+d4229bd0-78e5-49cd-ba42-3576c602c5c3,guest-demo-123,lower,Grey Sweatpants,2025-12-06T15:50:00Z
+6d4e63a3-f5cb-4f0d-b41a-ddf7c71f82f4,guest-demo-123,shoes,White Sneakers,2025-12-06T15:55:00Z
+e62f9ea9-3b8a-4db8-ad89-fa84b710fa46,guest-demo-123,shoes,Black Boots,2025-12-06T16:00:00Z
+932d8822-c718-4916-962d-1c8755139c19,guest-demo-123,accessories,Black Beanie,2025-12-06T16:05:00Z
+00779249-012d-4b1b-a3a1-9559c8d754ed,guest-demo-123,accessories,Silver Watch,2025-12-06T16:10:00Z
+3858c686-1f95-4523-a55e-29d5d33a80da,guest-demo-123,accessories,Blue Scarf,2025-12-06T16:15:00Z

@@ -1,38 +1,45 @@
-# weather-dress/Dockerfile
+# ---------- Deps stage ----------
+FROM node:20-alpine AS deps
+WORKDIR /app
+
+COPY package.json package-lock.json* yarn.lock* pnpm-lock.yaml* ./
+RUN \
+  if [ -f package-lock.json ]; then npm ci; \
+  elif [ -f yarn.lock ]; then yarn install --frozen-lockfile; \
+  elif [ -f pnpm-lock.yaml ]; then npm install -g pnpm && pnpm install --frozen-lockfile; \
+  else npm install; \
+  fi
 
 # ---------- Build stage ----------
 FROM node:20-alpine AS builder
-
 WORKDIR /app
 
-# Copy dependency manifests
-COPY package*.json ./
+# ⬇️ Add these lines
+ARG NEXT_PUBLIC_SUPABASE_URL
+ARG NEXT_PUBLIC_SUPABASE_ANON_KEY
 
-# Install dependencies
-# If you have a package-lock.json, you can optimize by using: RUN npm ci
-RUN npm install
+ENV NEXT_PUBLIC_SUPABASE_URL=${NEXT_PUBLIC_SUPABASE_URL}
+ENV NEXT_PUBLIC_SUPABASE_ANON_KEY=${NEXT_PUBLIC_SUPABASE_ANON_KEY}
 
-# Copy the rest of the app source
+COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
-# Build the Next.js app
+ENV NODE_ENV=production
+
+# This now sees the env vars
 RUN npm run build
 
 # ---------- Runtime stage ----------
 FROM node:20-alpine AS runner
-
 WORKDIR /app
 
-ENV NODE_ENV=development
+ENV NODE_ENV=production
 ENV PORT=3000
 
-# Copy only what we need to run the built app
-COPY --from=builder /app/package*.json ./
-COPY --from=builder /app/node_modules ./node_modules
-COPY --from=builder /app/.next ./.next
 COPY --from=builder /app/public ./public
+COPY --from=builder /app/.next ./.next
+COPY --from=builder /app/package.json ./package.json
+COPY --from=deps /app/node_modules ./node_modules
 
 EXPOSE 3000
-
-# "start" should be "next start" in package.json
 CMD ["npm", "start"]

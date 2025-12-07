@@ -7,8 +7,11 @@ import CLOUDS from "vanta/src/vanta.clouds";
 import { useSearchParams, useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import dynamic from "next/dynamic";
+import { supabase } from "@/src/app/lib/supabaseClient";
 
 // ---------- TYPES ----------
+
+type OutfitCategory = "upper" | "lower" | "accessories" | "shoes";
 
 type WeatherRes = {
   source?: string;
@@ -37,6 +40,8 @@ type WeatherEffectProps = {
   backgroundImageUrl?: string; // keep optional so we don't have to pass it
   intesity?: number;
 };
+
+type OutfitItem = { id: string; label: string };
 
 // ---------- BACKGROUND GRADIENT + VANTA CONFIG ----------
 
@@ -119,6 +124,54 @@ function cloudsOptionsForWeather(w: WeatherRes | null) {
     sunGlareColor: 0xffffff,
     sunlightColor: 0xffe0a0,
   };
+}
+
+
+// ----------- HOOK HELPERS FOR SUPABASE OUTFIT STORAGE -----------
+async function fetchOutfits(userKey: string) {
+  const { data, error } = await supabase
+    .from("outfit_items")
+    .select("*")
+    .eq("user_key", userKey)
+    .order("created_at", { ascending: true });
+  if (error) {
+    console.error("supabase fetchOutfits error", {
+      message: error.message,
+      details: error.details,
+      hint: error.hint,
+    });
+    throw error;
+  }
+  return data;
+}
+
+async function addOutfit(userKey: string, category: OutfitCategory, label: string) {
+  const { data, error } = await supabase
+    .from("outfit_items")
+    .insert([{ user_key: userKey, category, label }])
+    .select()
+    .single();
+  if (error) {
+    console.error("supabase addOutfit error", {
+      message: error.message,
+      details: error.details,
+      hint: error.hint,
+    });
+    throw error;
+  }
+  return data;
+}
+
+async function removeOutfit(id: string) {
+  const { error } = await supabase.from("outfit_items").delete().eq("id", id);
+  if (error) {
+    console.error("supabase removeOutfit error", {
+      message: error.message,
+      details: error.details,
+      hint: error.hint,
+    });
+    throw error;
+  }
 }
 
 // ---------- DYNAMIC IMPORTS FOR RAIN / SNOW / FOG EFFECTS ----------
@@ -233,6 +286,14 @@ export default function WeatherClient() {
   const [error, setError] = useState<string | null>(null);
   const [showWeekly, setShowWeekly] = useState(false);
   const [showWeeklyPanel, setShowWeeklyPanel] = useState(false);
+  const [upperItems, setUpperItems] = useState<OutfitItem[]>([]);
+  const [lowerItems, setLowerItems] = useState<OutfitItem[]>([]);
+  const [accessoriesItems, setAccessoriesItems] = useState<OutfitItem[]>([]);
+  const [shoesItems, setShoesItems] = useState<OutfitItem[]>([]);
+  const [userKey, setUserKey] = useState<string>(() => {
+    if (typeof window === "undefined") return "";
+    return localStorage.getItem("outfit_user_key") || "";
+  });
 
   // Animation timing (ms). Adjust here to change speed globally.
   const layoutDuration = 350;
@@ -319,6 +380,29 @@ export default function WeatherClient() {
     fetchWeather();
   }, [latParam, lonParam, units]);
 
+  // Ensure we have a stable userKey (guest UUID)
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (!userKey) {
+      const key = crypto.randomUUID();
+      localStorage.setItem("outfit_user_key", key);
+      setUserKey(key);
+    }
+  }, [userKey]);
+
+  // Fetch outfits from Supabase
+  useEffect(() => {
+    if (!userKey) return;
+    fetchOutfits(userKey)
+      .then((rows) => {
+        setUpperItems(rows.filter((r) => r.category === "upper").map((r) => ({ id: r.id, label: r.label })));
+        setLowerItems(rows.filter((r) => r.category === "lower").map((r) => ({ id: r.id, label: r.label })));
+        setAccessoriesItems(rows.filter((r) => r.category === "accessories").map((r) => ({ id: r.id, label: r.label })));
+        setShoesItems(rows.filter((r) => r.category === "shoes").map((r) => ({ id: r.id, label: r.label })));
+      })
+      .catch((err) => console.error("fetch outfits", err));
+  }, [userKey]);
+
   // Defer panel showing until layout animation finishes
   useEffect(() => {
     if (showWeekly) {
@@ -349,6 +433,56 @@ export default function WeatherClient() {
     const next = !showWeekly;
     setShowWeekly(next);
     setShowWeeklyPanel(false);
+  };
+
+  const handleRemoveItem = async (kind: OutfitCategory, id: string) => {
+    try {
+      await removeOutfit(id);
+      const remove = (items: OutfitItem[]) => items.filter((i) => i.id !== id);
+      switch (kind) {
+        case "upper":
+          setUpperItems(remove);
+          break;
+        case "lower":
+          setLowerItems(remove);
+          break;
+        case "accessories":
+          setAccessoriesItems(remove);
+          break;
+        case "shoes":
+          setShoesItems(remove);
+          break;
+      }
+    } catch (err) {
+      console.error("remove outfit", err);
+    }
+  };
+
+  const handleAddItem = async (kind: OutfitCategory) => {
+    const value = typeof window !== "undefined" ? window.prompt("Add an item") : null;
+    if (!value) return;
+    const trimmed = value.trim();
+    if (!trimmed || !userKey) return;
+    try {
+      const row = await addOutfit(userKey, kind, trimmed);
+      const entry = { id: row.id, label: row.label };
+      switch (kind) {
+        case "upper":
+          setUpperItems((items) => [...items, entry]);
+          break;
+        case "lower":
+          setLowerItems((items) => [...items, entry]);
+          break;
+        case "accessories":
+          setAccessoriesItems((items) => [...items, entry]);
+          break;
+        case "shoes":
+          setShoesItems((items) => [...items, entry]);
+          break;
+      }
+    } catch (err) {
+      console.error("add outfit", err);
+    }
   };
 
   // ---------- RENDER ----------
@@ -498,11 +632,76 @@ export default function WeatherClient() {
               <button
                 disabled={!weather?.daily?.length}
                 onClick={handleToggleWeekly}
-                className="text-sm w-full max-w-md px-5 py-3 rounded-xl border border-white/30 bg-white/10 text-white/90 shadow hover:bg-white/20 transition disabled:opacity-40 disabled:cursor-not-allowed"
+                className="text-sm w-full max-w-md px-5 py-1 rounded-xl border border-white/30 bg-white/10 text-white/90 shadow hover:bg-white/20 transition disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 {weeklyButtonLabel}
               </button>
             </div>
+
+            {showWeeklyPanel && (
+              <motion.div
+                layout
+                initial={{ opacity: 0, y: 12 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: 12 }}
+                transition={{ duration: layoutDuration / 1000 }}
+                className="w-full rounded-2xl border border-white/25 bg-black/75 text-white shadow-lg backdrop-blur px-4 py-3 space-y-4 text-sm"
+              >
+                <div className="flex items-center justify-between pb-2 border-b border-white/10">
+                  <p className="text-sm font-semibold">Outfit picks</p>
+                  <span className="text-[10px] uppercase tracking-wide text-white/60">
+                    curated
+                  </span>
+                </div>
+                {[
+                  { title: "Upper", items: upperItems, kind: "upper" as const },
+                  { title: "Lower", items: lowerItems, kind: "lower" as const },
+                  {
+                    title: "Accessories",
+                    items: accessoriesItems,
+                    kind: "accessories" as const,
+                  },
+                  { title: "Shoes", items: shoesItems, kind: "shoes" as const },
+                ].map(({ title, items, kind }) => (
+                  <div key={title} className="space-y-2 pb-1">
+                    <p className="text-xs uppercase tracking-wide text-white/70">
+                      {title}
+                    </p>
+                    <div className="flex items-center gap-3 overflow-x-auto">
+                      <button
+                        onClick={() => handleAddItem(kind)}
+                        className="h-8 w-8 rounded-full border border-white/30 bg-white/15 text-white text-lg leading-none flex items-center justify-center hover:bg-white/25 transition"
+                        aria-label={`Add ${title}`}
+                      >
+                        +
+                      </button>
+                      {items.map((item) => (
+                        <div key={item.id} className="flex flex-col items-center gap-1">
+                          <div
+                            className="h-14 w-14 rounded-full border border-white/15 bg-gradient-to-br from-white/15 to-white/5 flex items-center justify-center text-[11px] text-white/90 text-center px-2"
+                            title={item.label}
+                          >
+                            <span className="line-clamp-2 leading-tight">
+                              {item.label}
+                            </span>
+                          </div>
+                          <button
+                            onClick={() => handleRemoveItem(kind, item.id)}
+                            className="text-[10px] px-2 py-0.5 rounded-full border border-white/20 text-white/70 hover:bg-white/10 transition"
+                            aria-label={`Remove ${item.label}`}
+                          >
+                            ×
+                          </button>
+                        </div>
+                      ))}
+                      {!items.length && (
+                        <p className="text-xs text-white/60">No items yet</p>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </motion.div>
+            )}
           </motion.div>
 
           {showWeeklyPanel && weather?.daily?.length ? (
@@ -560,6 +759,7 @@ export default function WeatherClient() {
             </motion.div>
           ) : null}
         </motion.section>
+
       </div>
     </main>
   );
