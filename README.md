@@ -26,7 +26,7 @@ Weather Dress is a full-stack web app that recommends outfits from your wardrobe
 
 ## 🚀 Live Demo
 
-- Demo video (1–2 min): [▶ Watch the demo](demo.mp4)
+- Demo video (1–2 min):[▶ Watch on YouTube](https://youtu.be/M7L2yPYUr9U)
 
 ## 🧩 Running Locally
 
