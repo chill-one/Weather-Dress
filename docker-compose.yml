@@ -28,6 +28,8 @@ services:
       NEXT_PUBLIC_SUPABASE_URL: "${NEXT_PUBLIC_SUPABASE_URL}"
       NEXT_PUBLIC_SUPABASE_ANON_KEY: "${NEXT_PUBLIC_SUPABASE_ANON_KEY}"
       SERPAPI_API_KEY: "${SERPAPI_API_KEY}"
+      EMBEDDING_API_URL: "http://backend:8000/embed"
+      SUPABASE_SERVICE_ROLE_KEY: "${SUPABASE_SERVICE_ROLE_KEY}"
     depends_on:
       - backend
     volumes:

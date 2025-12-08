@@ -49,6 +49,7 @@ type OutfitItem = {
   store_url?: string | null;
   description?: string | null;
   color?: string | null;
+  category?: string | null;
   warmth_score?: number | null;
   water_resistance?: "none" | "resistant" | "waterproof" | null;
   wind_block?: "low" | "medium" | "high" | null;
@@ -59,6 +60,7 @@ type OutfitItem = {
   min_temp_c?: number | null;
   max_temp_c?: number | null;
 };
+type RenderCategoryItem = { item: OutfitItem; closest?: boolean };
 type OutfitSearchResult = {
   label: string;
   image_url?: string;
@@ -66,6 +68,16 @@ type OutfitSearchResult = {
   store_url?: string;
   description?: string | null;
   color?: string | null;
+};
+
+const tempColorClass = (temp: number | undefined | null, units: "imperial" | "metric") => {
+  if (temp == null || Number.isNaN(temp)) return "text-white";
+  const f = units === "imperial" ? temp : (temp * 9) / 5 + 32;
+  if (f <= 32) return "text-cyan-200";
+  if (f <= 55) return "text-sky-200";
+  if (f <= 75) return "text-white";
+  if (f <= 85) return "text-amber-200";
+  return "text-rose-300";
 };
 
 // ---------- BACKGROUND GRADIENT + VANTA CONFIG ----------
@@ -371,6 +383,30 @@ export default function WeatherClient() {
   const [pendingTempMin, setPendingTempMin] = useState(10);
   const [pendingTempMax, setPendingTempMax] = useState(20);
   const [pendingColor, setPendingColor] = useState("");
+  const [recommendedByDay, setRecommendedByDay] = useState<Record<number, OutfitItem[]>>({});
+  const [recommending, setRecommending] = useState(false);
+  const [reembedding, setReembedding] = useState(false);
+  const [reembedMessage, setReembedMessage] = useState<string | null>(null);
+
+  const buildItemText = (item: Partial<OutfitItem>, category: OutfitCategory) => {
+    const parts = [
+      `label: ${item.label ?? ""}`,
+      `category: ${category}`,
+      item.description ? `description: ${item.description}` : "",
+      item.color ? `color: ${item.color}` : "",
+      item.brand ? `brand: ${item.brand}` : "",
+      item.water_resistance ? `water: ${item.water_resistance}` : "",
+      item.wind_block ? `wind: ${item.wind_block}` : "",
+      item.breathability ? `breathability: ${item.breathability}` : "",
+      item.coverage_top ? `coverage_top: ${item.coverage_top}` : "",
+      item.coverage_bottom ? `coverage_bottom: ${item.coverage_bottom}` : "",
+      item.footwear_type ? `footwear: ${item.footwear_type}` : "",
+      item.warmth_score != null ? `warmth: ${item.warmth_score}` : "",
+      item.min_temp_c != null ? `min_temp: ${item.min_temp_c}` : "",
+      item.max_temp_c != null ? `max_temp: ${item.max_temp_c}` : "",
+    ];
+    return parts.filter(Boolean).join(". ");
+  };
 
   const outfitSections: Array<{
     title: string;
@@ -489,6 +525,7 @@ export default function WeatherClient() {
             .map((r) => ({
               id: r.id,
               label: r.label,
+              category: "upper",
               image_url: (r as any).image_url ?? null,
               brand: (r as any).brand ?? null,
               store_url: (r as any).store_url ?? null,
@@ -511,6 +548,7 @@ export default function WeatherClient() {
             .map((r) => ({
               id: r.id,
               label: r.label,
+              category: "lower",
               image_url: (r as any).image_url ?? null,
               brand: (r as any).brand ?? null,
               store_url: (r as any).store_url ?? null,
@@ -533,6 +571,7 @@ export default function WeatherClient() {
             .map((r) => ({
               id: r.id,
               label: r.label,
+              category: "accessories",
               image_url: (r as any).image_url ?? null,
               brand: (r as any).brand ?? null,
               store_url: (r as any).store_url ?? null,
@@ -555,6 +594,7 @@ export default function WeatherClient() {
             .map((r) => ({
               id: r.id,
               label: r.label,
+              category: "shoes",
               image_url: (r as any).image_url ?? null,
               brand: (r as any).brand ?? null,
               store_url: (r as any).store_url ?? null,
@@ -574,6 +614,72 @@ export default function WeatherClient() {
       })
       .catch((err) => console.error("fetch outfits", err));
   }, [userKey]);
+
+  // Fetch recommendations for the next 7 days when weekly panel opens
+  useEffect(() => {
+    const loadRecommendations = async () => {
+      if (!showWeeklyPanel || !weather?.daily?.length) return;
+      setRecommending(true);
+      try {
+        const requests = weather.daily.slice(0, 7).map((day: any, idx: number) => {
+          const avgTemp =
+            day?.temp && typeof day.temp === "object"
+              ? (day.temp.min + day.temp.max) / 2
+              : day?.min != null && day?.max != null
+              ? (day.min + day.max) / 2
+              : null;
+          const description =
+            day?.weather?.[0]?.description ??
+            day?.summary ??
+            weather.current?.description ??
+            "weather-based outfit";
+          const precip = day?.pop != null ? `${Math.round(day.pop * 100)}% precip` : undefined;
+
+          return fetch("/api/outfits/recommend", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              temp_c: avgTemp,
+              description,
+              precip,
+            }),
+          })
+            .then((res) => res.json())
+            .then((res) => ({ idx, items: res.items || [] }))
+            .catch(() => ({ idx, items: [] }));
+        });
+
+        const results = await Promise.all(requests);
+        const mapped: Record<number, OutfitItem[]> = {};
+        results.forEach(({ idx, items }) => {
+          mapped[idx] = (items as OutfitItem[]).map((it: any) => ({
+            id: it.id ?? crypto.randomUUID(),
+            label: it.label ?? "Item",
+            category: it.category ?? null,
+            image_url: it.image_url ?? null,
+            brand: it.brand ?? null,
+            store_url: it.store_url ?? null,
+            description: it.description ?? null,
+            color: it.color ?? null,
+            warmth_score: it.warmth_score ?? null,
+            water_resistance: it.water_resistance ?? null,
+            wind_block: it.wind_block ?? null,
+            breathability: it.breathability ?? null,
+            coverage_top: it.coverage_top ?? null,
+            coverage_bottom: it.coverage_bottom ?? null,
+            footwear_type: it.footwear_type ?? null,
+            min_temp_c: it.min_temp_c ?? null,
+            max_temp_c: it.max_temp_c ?? null,
+          }));
+        });
+        setRecommendedByDay(mapped);
+      } finally {
+        setRecommending(false);
+      }
+    };
+
+    loadRecommendations();
+  }, [showWeeklyPanel, weather]);
 
   // Defer panel showing until layout animation finishes
   useEffect(() => {
@@ -685,13 +791,18 @@ export default function WeatherClient() {
   };
 
   const renderOutfitRow = (title: string, kind: OutfitCategory, items: OutfitItem[]) => (
-    <div key={title} className="space-y-2 pb-1">
-      <p className="text-xs uppercase tracking-wide text-white/70">{title}</p>
+    <div key={title} className="space-y-1.5 pb-1">
+      <p className="text-xs uppercase tracking-[0.18em] text-white/70 flex items-center gap-1">
+        <span className="text-[11px]">
+          {kind === "upper" ? "👕" : kind === "lower" ? "👖" : kind === "accessories" ? "🧢" : "👟"}
+        </span>
+        {title}
+      </p>
 
-      <div className="flex items-center gap-3 overflow-x-auto">
+      <div className="flex items-center gap-2 overflow-x-auto">
         <button
           onClick={() => openSearch(kind)}
-          className="h-8 w-8 rounded-full border border-white/30 bg-white/15 text-white text-lg leading-none flex items-center justify-center hover:bg-white/25 transition"
+          className="h-8 w-8 rounded-full border border-white/40 bg-white/20 text-white text-sm font-semibold leading-none flex items-center justify-center hover:bg-white/30 transition"
           aria-label={`Add ${title}`}
         >
           +
@@ -700,11 +811,11 @@ export default function WeatherClient() {
         {items.map((item) => (
           <div key={item.id} className="flex flex-col items-center gap-1">
             <div
-              className="h-14 w-14 rounded-full border border-white/15 bg-gradient-to-br from-white/15 to-white/5 flex items-center justify-center text-[11px] text-white/90 text-center px-2 overflow-hidden"
+              className="h-12 w-12 rounded-full border border-white/15 bg-gradient-to-br from-white/15 to-white/5 flex items-center justify-center text-[10px] text-white/80 text-center px-1.5 overflow-hidden hover:border-white/40 hover:bg-white/20 transition-transform hover:-translate-y-0.5"
               title={item.label}
             >
               {item.image_url ? (
-                <img src={item.image_url} alt={item.label} className="h-full w-full object-cover" />
+                <img src={item.image_url} alt={item.label} className="h-full w-full object-contain rounded-md" />
               ) : (
                 <span className="line-clamp-2 leading-tight">{item.label}</span>
               )}
@@ -723,6 +834,21 @@ export default function WeatherClient() {
       </div>
     </div>
   );
+
+  const handleReembedAll = async () => {
+    setReembedding(true);
+    setReembedMessage(null);
+    try {
+      const res = await fetch("/api/outfits/reembed", { method: "POST" });
+      const js = await res.json();
+      if (js?.message) setReembedMessage(js.message);
+    } catch (err: any) {
+      setReembedMessage("Failed to re-embed items");
+      console.error("reembed click error", err);
+    } finally {
+      setReembedding(false);
+    }
+  };
 
   const renderSearchModal = () => {
     if (!showSearchModal) return null;
@@ -848,17 +974,41 @@ export default function WeatherClient() {
           transition={{ layout: { duration: layoutDuration / 1000, ease: "easeInOut" } }}
           className={
             showWeekly
-              ? "flex-1 px-4 py-7 flex flex-col gap-6 lg:flex-row lg:items-start lg:gap-8"
-              : "flex-1 grid place-content-center px-4 py-8"
+              ? "flex-1 px-5 py-8 flex flex-col gap-7 lg:flex-row lg:items-start lg:gap-8"
+              : "flex-1 grid place-content-center px-5 py-8"
           }
         >
-          <motion.div layout className="w-full max-w-md flex flex-col gap-6">
+          {/* Temperature color legend */}
+          <div className="absolute left-1/2 -translate-x-1/2 top-8 w-[min(760px,92vw)] text-white/70 text-xs z-20">
+            <div className="rounded-xl border border-white/15 bg-black/60 backdrop-blur px-4 py-3 shadow-lg">
+              <div className="relative h-3 rounded-full overflow-hidden border border-white/20">
+                <div
+                  className="absolute inset-0"
+                  style={{
+                    background:
+                      "linear-gradient(90deg, #99f6e4 0%, #bae6fd 25%, #ffffff 50%, #fde68a 75%, #fecdd3 100%)",
+                  }}
+                />
+                <div className="absolute -left-6 top-1/2 -translate-y-1/2 text-lg">❄️</div>
+                <div className="absolute -right-6 top-1/2 -translate-y-1/2 text-lg">🔥</div>
+              </div>
+              <div className="flex justify-between mt-2 px-1">
+                <span className="text-cyan-100">≤32°F</span>
+                <span className="text-sky-100">55°F</span>
+                <span className="text-white">75°F</span>
+                <span className="text-amber-100">85°F</span>
+                <span className="text-rose-100">85°F+</span>
+              </div>
+            </div>
+          </div>
+
+          <motion.div layout className="w-full max-w-[18rem] flex flex-col gap-4">
             <motion.div
               layout
               initial={{ opacity: 0, y: 8 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: layoutDuration / 1000 }}
-              className="w-full rounded-2xl border border-white/20 bg-black/60 text-white p-6 shadow-lg backdrop-blur"
+              className="w-full rounded-xl border border-white/20 bg-black/70 text-white p-4 shadow-lg backdrop-blur"
             >
               {loading && (
                 <p className="text-sm text-neutral-100/90">
@@ -884,10 +1034,13 @@ export default function WeatherClient() {
                   </p>
 
                   <div className="flex items-baseline gap-2 mb-4">
-                    <span className="text-5xl font-bold">
-                      {weather.current?.temp != null
-                        ? Math.round(weather.current.temp)
-                        : "--"}
+                    <span
+                      className={`text-5xl font-bold ${tempColorClass(
+                        weather.current?.temp != null ? Math.round(weather.current.temp) : null,
+                        units
+                      )}`}
+                    >
+                      {weather.current?.temp != null ? Math.round(weather.current.temp) : "--"}
                     </span>
                     <span className="text-lg">
                       {units === "imperial" ? "°F" : "°C"}
@@ -899,12 +1052,14 @@ export default function WeatherClient() {
                         <p className="text-neutral-100/70">
                           Feels like
                         </p>
-                        <p className="font-semibold">
-                          {weather.current?.feels_like != null
-                            ? Math.round(weather.current.feels_like)
-                            : "--"}
-                          {weather.current?.feels_like != null &&
-                            (units === "imperial" ? "°F" : "°C")}
+                        <p
+                          className={`font-semibold ${tempColorClass(
+                            weather.current?.feels_like != null ? Math.round(weather.current.feels_like) : null,
+                            units
+                          )}`}
+                        >
+                          {weather.current?.feels_like != null ? Math.round(weather.current.feels_like) : "--"}
+                          {weather.current?.feels_like != null && (units === "imperial" ? "°F" : "°C")}
                         </p>
                       </div>
 
@@ -953,15 +1108,26 @@ export default function WeatherClient() {
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: 12 }}
                 transition={{ duration: layoutDuration / 1000 }}
-                className="w-full rounded-2xl border border-white/25 bg-black/75 text-white shadow-lg backdrop-blur px-4 py-3 space-y-4 text-sm"
+                className="w-full rounded-2xl border border-white/15 bg-black/70 text-white shadow-lg backdrop-blur px-3 py-2.5 space-y-2 text-sm"
               >
                 <div className="flex items-center justify-between pb-2 border-b border-white/10">
-                  <p className="text-sm font-semibold">Outfit picks</p>
-                  <span className="text-[10px] uppercase tracking-wide text-white/60">
-                    curated
-                  </span>
+                  <p className="text-sm font-semibold flex items-center gap-2">
+                    <span className="text-[12px]">🪄</span> Outfit picks
+                  </p>
+                  {reembedMessage && (
+                    <span className="text-[11px] text-white/70">{reembedMessage}</span>
+                  )}
                 </div>
                 {outfitSections.map(({ title, kind, items }) => renderOutfitRow(title, kind, items))}
+                <div className="flex justify-end">
+                  <button
+                    onClick={handleReembedAll}
+                    className="text-[11px] px-2 py-1 rounded-full border border-white/20 bg-white/10 hover:bg-white/20 transition text-white/80 disabled:opacity-50"
+                    disabled={reembedding}
+                  >
+                    {reembedding ? "Re-embedding..." : "Re-embed all"}
+                  </button>
+                </div>
               </motion.div>
             )}
           </motion.div>
@@ -1173,6 +1339,34 @@ export default function WeatherClient() {
                     onClick={async () => {
                       if (!pendingItem || !pendingCategory || !userKey) return;
                       try {
+                        // Build text and fetch embedding
+                        const embedPayload: Partial<OutfitItem> = {
+                          label: pendingItem.label,
+                          description: pendingDescription || pendingItem.description || null,
+                          color: pendingColor || null,
+                          brand: pendingItem.brand ?? null,
+                          water_resistance: pendingWater,
+                          wind_block: pendingWind,
+                          breathability: pendingBreath,
+                          coverage_top: pendingTop,
+                          coverage_bottom: pendingBottom,
+                          footwear_type: pendingFoot,
+                          min_temp_c: pendingTempMin,
+                          max_temp_c: pendingTempMax,
+                        };
+                        let embedding: number[] | undefined;
+                        try {
+                          const res = await fetch("/api/outfits/embed", {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ text: buildItemText(embedPayload, pendingCategory) }),
+                          });
+                          const js = await res.json();
+                          if (Array.isArray(js?.embedding)) embedding = js.embedding;
+                        } catch (err) {
+                          console.error("embedding fetch failed", err);
+                        }
+
                         const row = await addOutfit(userKey, pendingCategory, pendingItem.label, {
                           image_url: pendingItem.image_url,
                           brand: pendingItem.brand,
@@ -1188,10 +1382,12 @@ export default function WeatherClient() {
                           footwear_type: pendingFoot,
                           min_temp_c: pendingTempMin,
                           max_temp_c: pendingTempMax,
+                          ...(embedding ? { embedding } : {}),
                         });
                         const entry: OutfitItem = {
                           id: row.id,
                           label: row.label,
+                          category: pendingCategory,
                           image_url: (row as any).image_url ?? pendingItem.image_url ?? null,
                           brand: (row as any).brand ?? pendingItem.brand ?? null,
                           store_url: (row as any).store_url ?? pendingItem.store_url ?? null,
@@ -1242,12 +1438,12 @@ export default function WeatherClient() {
               <motion.div
                 layout
                 transition={{ layout: { duration: layoutDuration / 1000, ease: "easeInOut" } }}
-                className="w-full rounded-2xl border border-white/20 bg-black/40 text-white/90 p-6 shadow backdrop-blur"
+                className="w-full rounded-2xl border border-white/15 bg-black/40 text-white/90 p-7 shadow backdrop-blur"
               >
                 <p className="text-xs uppercase tracking-wide text-white/60 mb-3">
                   7-day outlook
                 </p>
-                <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3">
+                <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-4">
                   {(weather.daily ?? [])
                     .slice(0, 7)
                     .map((day, idx) => {
@@ -1266,7 +1462,7 @@ export default function WeatherClient() {
                           key={`${day.dt}-${idx}`}
                           className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm"
                         >
-                          <p className="font-semibold">{label}</p>
+                          <p className="font-semibold text-sm">{label}</p>
                           <div className="flex items-center gap-2 text-xs text-white/80">
                             {iconUrl ? (
                               <img
@@ -1281,10 +1477,15 @@ export default function WeatherClient() {
                               </span>
                             )}
                           </div>
-                          <p className="text-white/70 text-xs">
-                            {day.min != null ? Math.round(day.min) : "--"}° /{" "}
-                            {day.max != null ? Math.round(day.max) : "--"}°
-                            {units === "imperial" ? "F" : "C"}
+                          <p className="text-xs flex items-center gap-1">
+                            <span className={tempColorClass(day.min != null ? Math.round(day.min) : null, units)}>
+                              {day.min != null ? Math.round(day.min) : "--"}°
+                            </span>
+                            <span className="text-white/60">/</span>
+                            <span className={tempColorClass(day.max != null ? Math.round(day.max) : null, units)}>
+                              {day.max != null ? Math.round(day.max) : "--"}°
+                            </span>
+                            <span className="text-white/60">{units === "imperial" ? "F" : "C"}</span>
                           </p>
                         </div>
                       );
@@ -1295,33 +1496,38 @@ export default function WeatherClient() {
               <motion.div
                 layout
                 transition={{ layout: { duration: layoutDuration / 1000, ease: "easeInOut" } }}
-                className="w-full rounded-2xl border border-white/15 bg-black/50 text-white p-4 shadow backdrop-blur space-y-3"
+                className="w-full rounded-2xl border border-white/15 bg-black/50 text-white p-5 shadow backdrop-blur space-y-3"
               >
-                <p className="text-xs uppercase tracking-wide text-white/60 mb-1">
+                <p className="text-xs uppercase tracking-[0.18em] text-white/60 mb-1">
                   Outfit slots by day
                 </p>
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                   {(weather.daily ?? []).slice(0, 7).map((day, idx) => {
                     const date = new Date(day.dt * 1000);
                     const label = formatDayLabel(date, idx);
-                    const renderCategory = (title: string, items: OutfitItem[]) => (
+                    const recs = recommendedByDay[idx] ?? [];
+                    const renderCategory = (title: string, items: RenderCategoryItem[]) => (
                       <div className="space-y-1">
-                        <p className="text-[11px] uppercase tracking-wide text-white/60">{title}</p>
+                        <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-white/50">{title}</p>
                         <div className="flex items-center gap-2 overflow-x-auto">
                           {items.length ? (
-                            items.slice(0, 2).map((item) => (
-                              <div
-                                key={`${title}-${item.id}`}
-                                className="h-5 px-1 rounded-full border border-white/15 bg-white/5 text-[11px] flex items-center gap-2 text-white/90"
-                              >
-                                {item.image_url ? (
-                                  <img
-                                    src={item.image_url}
-                                    alt={item.label}
-                                    className="h-5 w-5 rounded-full object-cover"
-                                  />
+                            items.slice(0, 2).map(({ item, closest }) => (
+                              <div key={`${title}-${item.id}`} className="flex items-center gap-2">
+                                <div className="h-5 px-1 rounded-full border border-white/15 bg-white/5 text-[11px] flex items-center gap-2 text-white/80">
+                                  {item.image_url ? (
+                                    <img
+                                      src={item.image_url}
+                                      alt={item.label}
+                                      className="h-5 w-5 rounded-full object-cover"
+                                    />
+                                  ) : null}
+                                  <span className="line-clamp-1">{item.label}</span>
+                                </div>
+                                {closest ? (
+                                  <span className="ml-2 inline-flex items-center rounded-full px-2 py-0.5 text-[10px] border border-teal-300/60 bg-teal-500/20 text-teal-100">
+                                    closest match
+                                  </span>
                                 ) : null}
-                                <span className="line-clamp-1">{item.label}</span>
                               </div>
                             ))
                           ) : (
@@ -1331,25 +1537,42 @@ export default function WeatherClient() {
                       </div>
                     );
 
+                    const pickForCategory = (cat: OutfitCategory, fallback: OutfitItem[]): RenderCategoryItem[] => {
+                      const matches = recs.filter((r) => r.category === cat);
+                      if (matches.length) return matches.slice(0, 1).map((m) => ({ item: m }));
+                      if (fallback.length) return [{ item: fallback[0], closest: true }];
+                      return [];
+                    };
+
                     return (
-                      <div
+                      <motion.div
+                        whileHover={{ y: -2, scale: 1.01 }}
+                        transition={{ duration: 0.15 }}
                         key={`planner-${day.dt}-${idx}`}
-                        className="rounded-xl border border-white/10 bg-white/5 p-3 space-y-2"
+                        className={`rounded-2xl border p-3 space-y-2 ${
+                          idx === 0 ? "border-white/40 bg-white/10" : "border-white/10 bg-white/5"
+                        }`}
                       >
-                        <div className="flex items-center justify-between text-sm font-semibold">
+                        <div className={`flex items-center justify-between ${idx === 0 ? "text-base font-semibold" : "text-sm font-semibold"}`}>
                           <span>{label}</span>
-                          <span className="text-white/60 text-xs">
-                            {day.min != null ? Math.round(day.min) : "--"}° /{" "}
-                            {day.max != null ? Math.round(day.max) : "--"}°
+                          <span className="text-xs flex items-center gap-1">
+                            <span className={tempColorClass(day.min != null ? Math.round(day.min) : null, units)}>
+                              {day.min != null ? Math.round(day.min) : "--"}°
+                            </span>
+                            <span className="text-white/60">/</span>
+                            <span className={tempColorClass(day.max != null ? Math.round(day.max) : null, units)}>
+                              {day.max != null ? Math.round(day.max) : "--"}°
+                            </span>
                           </span>
                         </div>
                         <div className="space-y-2">
-                          {renderCategory("Upper", upperItems)}
-                          {renderCategory("Lower", lowerItems)}
-                          {renderCategory("Accessories", accessoriesItems)}
-                          {renderCategory("Shoes", shoesItems)}
+                          {renderCategory("Upper", pickForCategory("upper", upperItems))}
+                          {renderCategory("Lower", pickForCategory("lower", lowerItems))}
+                          {renderCategory("Accessories", pickForCategory("accessories", accessoriesItems))}
+                          {renderCategory("Shoes", pickForCategory("shoes", shoesItems))}
                         </div>
-                      </div>
+                        {recommending && <p className="text-[10px] text-white/50">Updating recommendations…</p>}
+                      </motion.div>
                     );
                   })}
                 </div>

@@ -12,6 +12,7 @@ scikit-learn
 numpy
 pandas
 joblib
+sentence-transformers
 
 pytest
 pytest-asyncio
@@ -21,4 +22,3 @@ mypy
 black
 types-redis
 types-requests
-
