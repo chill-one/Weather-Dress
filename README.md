@@ -1,30 +1,39 @@
-# Weather-Dress
+# Weather Dress – AI-Assisted Outfit Recommender
 
-Synopsis:
+Weather Dress is a full-stack web app that recommends outfits from your wardrobe based on **real-time weather** and your **style preferences**.
 
-This project is a location-aware weather-based outfit recommendation system that helps users decide what to wear each day. By fetching real-time weather data (temperature, humidity, wind, precipitation, and UV index) from a public API, the system applies a rules engine to suggest suitable clothing layers, footwear, and accessories. The application tailors recommendations based on forecast conditions (e.g., rain → waterproof jacket and umbrella; high heat → breathable fabrics and sunglasses; snow → insulated boots and gloves). The frontend provides an intuitive interface where users can allow location access and instantly receive personalized outfit suggestions, while the backend handles weather API integration and decision logic. The goal of the project is to blend practical data-driven decision making with a user-friendly design, offering a daily utility that combines weather forecasting with personal comfort and style guidance.
+## 🧠 What it does
 
-STACK:
+- Pulls **live weather** for your location
+- Lets you **save clothes/outfits** to a personal wardrobe
+- Tags clothes by **warmth, water resistance, coverage, occasion**, etc.
+- Ranks outfits based on **closest match** to today’s weather
+- Highlights **“best match”** and shows near-matches
 
-🌐 Frontend: Next.js (React) + Tailwind — Vercel (Hobby)
+## 🛠 Tech Stack
 
-⚙️ Backend: FastAPI (Python) — Render/Railway (Free)
-    Cache: Upstash Redis 
-    Database: Supabase 
+- Frontend: Next.js / React, TypeScript, Tailwind CSS
+- Backend: Supabase (Postgres, Auth, Storage)
+- APIs: Weather API (e.g. OpenWeather), SerpAPI (optional search for clothes)
+- Other: Docker, etc. (whatever else you used)
 
-📡 Data Sources: Open-Meteo; 
-                OpenWeathermap gelocation
+## ✨ Key Features
 
-🤖 AI/Personalization:
-    Comfort Offset (Python or JS)
-    Feedback Learning (Python: logistic regression or contextual bandit)
-    Optional ONNX Runtime Web (client-side embeddings)
+- Real-time weather → outfit recommendations  
+- Closet management (add, tag, and search clothing items)  
+- “Closest match” scoring system for temperature / rain / wind  
+- Responsive UI built for mobile & desktop
 
-🛠️ Dev Tools: Git + GitHub; 
-            Vercel deploy for frontend; 
-            Render/Railway for backend; 
-            Vitest/Jest (frontend) + Pytest (backend); 
-            env vars in Vercel/Render dashboards
+## 🚀 Live Demo
 
-Diagram:
-![A Screenshot of the Diagram](./Control_flow.png)
+- App: [live link here]
+- Demo video (2–3 min): [YouTube link here]
+
+## 🧩 Running Locally
+
+```bash
+git clone <repo-url>
+cd <project-folder>
+cp .env.example .env.local   # fill in keys
+npm install
+npm run dev
