@@ -324,8 +324,6 @@ function pickEffectConfig(
 }
 
 function formatDayLabel(date: Date, idx: number) {
-  if (idx === 0) return "Today";
-  if (idx === 1) return "Tomorrow";
   return date.toLocaleDateString(undefined, { weekday: "short" });
 }
 
@@ -387,6 +385,101 @@ export default function WeatherClient() {
   const [recommending, setRecommending] = useState(false);
   const [reembedding, setReembedding] = useState(false);
   const [reembedMessage, setReembedMessage] = useState<string | null>(null);
+
+  const syncOutfitState = (rows: any[]) => {
+    setUpperItems(
+      rows
+        .filter((r) => r.category === "upper")
+        .map((r) => ({
+          id: r.id,
+          label: r.label,
+          category: "upper",
+          image_url: (r as any).image_url ?? null,
+          brand: (r as any).brand ?? null,
+          store_url: (r as any).store_url ?? null,
+          color: (r as any).color ?? null,
+          description: (r as any).description ?? null,
+          warmth_score: (r as any).warmth_score ?? null,
+          water_resistance: (r as any).water_resistance ?? null,
+          wind_block: (r as any).wind_block ?? null,
+          breathability: (r as any).breathability ?? null,
+          coverage_top: (r as any).coverage_top ?? null,
+          coverage_bottom: (r as any).coverage_bottom ?? null,
+          footwear_type: (r as any).footwear_type ?? null,
+          min_temp_c: (r as any).min_temp_c ?? null,
+          max_temp_c: (r as any).max_temp_c ?? null,
+        }))
+    );
+    setLowerItems(
+      rows
+        .filter((r) => r.category === "lower")
+        .map((r) => ({
+          id: r.id,
+          label: r.label,
+          category: "lower",
+          image_url: (r as any).image_url ?? null,
+          brand: (r as any).brand ?? null,
+          store_url: (r as any).store_url ?? null,
+          color: (r as any).color ?? null,
+          description: (r as any).description ?? null,
+          warmth_score: (r as any).warmth_score ?? null,
+          water_resistance: (r as any).water_resistance ?? null,
+          wind_block: (r as any).wind_block ?? null,
+          breathability: (r as any).breathability ?? null,
+          coverage_top: (r as any).coverage_top ?? null,
+          coverage_bottom: (r as any).coverage_bottom ?? null,
+          footwear_type: (r as any).footwear_type ?? null,
+          min_temp_c: (r as any).min_temp_c ?? null,
+          max_temp_c: (r as any).max_temp_c ?? null,
+        }))
+    );
+    setAccessoriesItems(
+      rows
+        .filter((r) => r.category === "accessories")
+        .map((r) => ({
+          id: r.id,
+          label: r.label,
+          category: "accessories",
+          image_url: (r as any).image_url ?? null,
+          brand: (r as any).brand ?? null,
+          store_url: (r as any).store_url ?? null,
+          color: (r as any).color ?? null,
+          description: (r as any).description ?? null,
+          warmth_score: (r as any).warmth_score ?? null,
+          water_resistance: (r as any).water_resistance ?? null,
+          wind_block: (r as any).wind_block ?? null,
+          breathability: (r as any).breathability ?? null,
+          coverage_top: (r as any).coverage_top ?? null,
+          coverage_bottom: (r as any).coverage_bottom ?? null,
+          footwear_type: (r as any).footwear_type ?? null,
+          min_temp_c: (r as any).min_temp_c ?? null,
+          max_temp_c: (r as any).max_temp_c ?? null,
+        }))
+    );
+    setShoesItems(
+      rows
+        .filter((r) => r.category === "shoes")
+        .map((r) => ({
+          id: r.id,
+          label: r.label,
+          category: "shoes",
+          image_url: (r as any).image_url ?? null,
+          brand: (r as any).brand ?? null,
+          store_url: (r as any).store_url ?? null,
+          color: (r as any).color ?? null,
+          description: (r as any).description ?? null,
+          warmth_score: (r as any).warmth_score ?? null,
+          water_resistance: (r as any).water_resistance ?? null,
+          wind_block: (r as any).wind_block ?? null,
+          breathability: (r as any).breathability ?? null,
+          coverage_top: (r as any).coverage_top ?? null,
+          coverage_bottom: (r as any).coverage_bottom ?? null,
+          footwear_type: (r as any).footwear_type ?? null,
+          min_temp_c: (r as any).min_temp_c ?? null,
+          max_temp_c: (r as any).max_temp_c ?? null,
+        }))
+    );
+  };
 
   const buildItemText = (item: Partial<OutfitItem>, category: OutfitCategory) => {
     const parts = [
@@ -457,9 +550,10 @@ export default function WeatherClient() {
     const lat = latParam;
     const lon = lonParam;
 
-    async function fetchWeather() {
+    let intervalId: number | undefined;
+
+    async function fetchWeatherOnce() {
       try {
-        setLoading(true);
         setError(null);
 
         const params = new URLSearchParams();
@@ -496,12 +590,20 @@ export default function WeatherClient() {
         setError("Couldn't load weather for this location.");
       } finally {
         setLoading(false);
-        setShowWeekly(false);
-        setShowWeeklyPanel(false);
       }
     }
 
-    fetchWeather();
+    setLoading(true);
+    fetchWeatherOnce();
+
+    intervalId = window.setInterval(() => {
+      if (document.visibilityState !== "visible") return;
+      fetchWeatherOnce();
+    }, 5 * 60 * 1000);
+
+    return () => {
+      if (intervalId) window.clearInterval(intervalId);
+    };
   }, [latParam, lonParam, units]);
 
   // Ensure we have a stable userKey (guest UUID)
@@ -519,100 +621,35 @@ export default function WeatherClient() {
     if (!userKey) return;
     fetchOutfits(userKey)
       .then((rows) => {
-        setUpperItems(
-          rows
-            .filter((r) => r.category === "upper")
-            .map((r) => ({
-              id: r.id,
-              label: r.label,
-              category: "upper",
-              image_url: (r as any).image_url ?? null,
-              brand: (r as any).brand ?? null,
-              store_url: (r as any).store_url ?? null,
-              color: (r as any).color ?? null,
-              description: (r as any).description ?? null,
-              warmth_score: (r as any).warmth_score ?? null,
-              water_resistance: (r as any).water_resistance ?? null,
-              wind_block: (r as any).wind_block ?? null,
-              breathability: (r as any).breathability ?? null,
-              coverage_top: (r as any).coverage_top ?? null,
-              coverage_bottom: (r as any).coverage_bottom ?? null,
-              footwear_type: (r as any).footwear_type ?? null,
-              min_temp_c: (r as any).min_temp_c ?? null,
-              max_temp_c: (r as any).max_temp_c ?? null,
-            }))
-        );
-        setLowerItems(
-          rows
-            .filter((r) => r.category === "lower")
-            .map((r) => ({
-              id: r.id,
-              label: r.label,
-              category: "lower",
-              image_url: (r as any).image_url ?? null,
-              brand: (r as any).brand ?? null,
-              store_url: (r as any).store_url ?? null,
-              color: (r as any).color ?? null,
-              description: (r as any).description ?? null,
-              warmth_score: (r as any).warmth_score ?? null,
-              water_resistance: (r as any).water_resistance ?? null,
-              wind_block: (r as any).wind_block ?? null,
-              breathability: (r as any).breathability ?? null,
-              coverage_top: (r as any).coverage_top ?? null,
-              coverage_bottom: (r as any).coverage_bottom ?? null,
-              footwear_type: (r as any).footwear_type ?? null,
-              min_temp_c: (r as any).min_temp_c ?? null,
-              max_temp_c: (r as any).max_temp_c ?? null,
-            }))
-        );
-        setAccessoriesItems(
-          rows
-            .filter((r) => r.category === "accessories")
-            .map((r) => ({
-              id: r.id,
-              label: r.label,
-              category: "accessories",
-              image_url: (r as any).image_url ?? null,
-              brand: (r as any).brand ?? null,
-              store_url: (r as any).store_url ?? null,
-              color: (r as any).color ?? null,
-              description: (r as any).description ?? null,
-              warmth_score: (r as any).warmth_score ?? null,
-              water_resistance: (r as any).water_resistance ?? null,
-              wind_block: (r as any).wind_block ?? null,
-              breathability: (r as any).breathability ?? null,
-              coverage_top: (r as any).coverage_top ?? null,
-              coverage_bottom: (r as any).coverage_bottom ?? null,
-              footwear_type: (r as any).footwear_type ?? null,
-              min_temp_c: (r as any).min_temp_c ?? null,
-              max_temp_c: (r as any).max_temp_c ?? null,
-            }))
-        );
-        setShoesItems(
-          rows
-            .filter((r) => r.category === "shoes")
-            .map((r) => ({
-              id: r.id,
-              label: r.label,
-              category: "shoes",
-              image_url: (r as any).image_url ?? null,
-              brand: (r as any).brand ?? null,
-              store_url: (r as any).store_url ?? null,
-              color: (r as any).color ?? null,
-              description: (r as any).description ?? null,
-              warmth_score: (r as any).warmth_score ?? null,
-              water_resistance: (r as any).water_resistance ?? null,
-              wind_block: (r as any).wind_block ?? null,
-              breathability: (r as any).breathability ?? null,
-              coverage_top: (r as any).coverage_top ?? null,
-              coverage_bottom: (r as any).coverage_bottom ?? null,
-              footwear_type: (r as any).footwear_type ?? null,
-              min_temp_c: (r as any).min_temp_c ?? null,
-              max_temp_c: (r as any).max_temp_c ?? null,
-            }))
-        );
+        syncOutfitState(rows);
       })
       .catch((err) => console.error("fetch outfits", err));
+  }, [userKey]);
+
+  // Realtime updates for outfits (Supabase)
+  useEffect(() => {
+    if (!userKey) return;
+    const channel = supabase
+      .channel("outfit-items-realtime")
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "outfit_items",
+          filter: `user_key=eq.${userKey}`,
+        },
+        () => {
+          fetchOutfits(userKey)
+            .then((rows) => syncOutfitState(rows))
+            .catch((err) => console.error("realtime fetch outfits", err));
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, [userKey]);
 
   // Fetch recommendations for the next 7 days when weekly panel opens
@@ -706,6 +743,19 @@ export default function WeatherClient() {
     ? "Hide weekly forecast"
     : "Show weekly forecast";
 
+  const currentTempF =
+    weather?.current?.temp != null
+      ? units === "imperial"
+        ? weather.current.temp
+        : (weather.current.temp * 9) / 5 + 32
+      : null;
+  const clampedPercent = (() => {
+    if (currentTempF == null || Number.isNaN(currentTempF)) return 50;
+    const min = -10;
+    const max = 100;
+    return Math.min(100, Math.max(0, ((currentTempF - min) / (max - min)) * 100));
+  })();
+
   const handleToggleWeekly = () => {
     if (!weather?.daily?.length) return;
     const next = !showWeekly;
@@ -791,8 +841,8 @@ export default function WeatherClient() {
   };
 
   const renderOutfitRow = (title: string, kind: OutfitCategory, items: OutfitItem[]) => (
-    <div key={title} className="space-y-1.5 pb-1">
-      <p className="text-xs uppercase tracking-[0.18em] text-white/70 flex items-center gap-1">
+    <div key={title} className="space-y-1 pb-1">
+      <p className="text-xs uppercase tracking-[0.15em] text-white/55 flex items-center gap-1">
         <span className="text-[11px]">
           {kind === "upper" ? "👕" : kind === "lower" ? "👖" : kind === "accessories" ? "🧢" : "👟"}
         </span>
@@ -979,28 +1029,33 @@ export default function WeatherClient() {
           }
         >
           {/* Temperature color legend */}
-          <div className="absolute left-1/2 -translate-x-1/2 top-8 w-[min(760px,92vw)] text-white/70 text-xs z-20">
-            <div className="rounded-xl border border-white/15 bg-black/60 backdrop-blur px-4 py-3 shadow-lg">
-              <div className="relative h-3 rounded-full overflow-hidden border border-white/20">
-                <div
-                  className="absolute inset-0"
-                  style={{
-                    background:
-                      "linear-gradient(90deg, #99f6e4 0%, #bae6fd 25%, #ffffff 50%, #fde68a 75%, #fecdd3 100%)",
-                  }}
-                />
-                <div className="absolute -left-6 top-1/2 -translate-y-1/2 text-lg">❄️</div>
-                <div className="absolute -right-6 top-1/2 -translate-y-1/2 text-lg">🔥</div>
-              </div>
-              <div className="flex justify-between mt-2 px-1">
-                <span className="text-cyan-100">≤32°F</span>
-                <span className="text-sky-100">55°F</span>
-                <span className="text-white">75°F</span>
-                <span className="text-amber-100">85°F</span>
-                <span className="text-rose-100">85°F+</span>
+          {showWeeklyPanel && (
+            <div className="absolute left-1/2 -translate-x-1/2 top-6 w-[min(760px,92vw)] text-white/70 text-[11px] z-20">
+              <div className="rounded-xl border border-white/15 bg-black/60 backdrop-blur px-4 py-1.5 shadow-lg space-y-1.5">
+                <div className="flex items-center justify-between text-[11px]">
+                  <span className="text-cyan-100">≤32°F</span>
+                  <span className="text-sky-100">55°F</span>
+                  <span className="text-white">75°F</span>
+                  <span className="text-amber-200 font-semibold">85°F+</span>
+                </div>
+                <div className="relative h-1.5 rounded-full overflow-hidden bg-white/10 border border-white/20">
+                  <div
+                    className="absolute inset-0"
+                    style={{
+                      background:
+                        "linear-gradient(90deg, #99f6e4 0%, #bae6fd 25%, #ffffff 50%, #fde68a 75%, #fecdd3 100%)",
+                    }}
+                  />
+                  <div className="absolute left-1 text-lg top-1/2 -translate-y-1/2">❄️</div>
+                  <div className="absolute right-1 text-lg top-1/2 -translate-y-1/2">🔥</div>
+                  <div
+                    className="absolute -top-[2px] h-2 w-2 rounded-full bg-amber-300 shadow"
+                    style={{ left: `${clampedPercent}%`, transform: "translateX(-50%)" }}
+                  />
+                </div>
               </div>
             </div>
-          </div>
+          )}
 
           <motion.div layout className="w-full max-w-[18rem] flex flex-col gap-4">
             <motion.div
@@ -1108,10 +1163,10 @@ export default function WeatherClient() {
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: 12 }}
                 transition={{ duration: layoutDuration / 1000 }}
-                className="w-full rounded-2xl border border-white/15 bg-black/70 text-white shadow-lg backdrop-blur px-3 py-2.5 space-y-2 text-sm"
+                className="w-full rounded-2xl border border-white/20 bg-black/65 text-white shadow-lg backdrop-blur px-5 py-4 space-y-2 text-sm"
               >
                 <div className="flex items-center justify-between pb-2 border-b border-white/10">
-                  <p className="text-sm font-semibold flex items-center gap-2">
+                  <p className="text-sm font-semibold flex items-center gap-2 tracking-[0.15em] text-white/65">
                     <span className="text-[12px]">🪄</span> Outfit picks
                   </p>
                   {reembedMessage && (
@@ -1436,13 +1491,13 @@ export default function WeatherClient() {
           {showWeeklyPanel && weather?.daily?.length ? (
             <div className="w-full max-w-5xl lg:max-w-none mx-auto space-y-6 mt-6">
               <motion.div
-                layout
-                transition={{ layout: { duration: layoutDuration / 1000, ease: "easeInOut" } }}
-                className="w-full rounded-2xl border border-white/15 bg-black/40 text-white/90 p-7 shadow backdrop-blur"
-              >
-                <p className="text-xs uppercase tracking-wide text-white/60 mb-3">
-                  7-day outlook
-                </p>
+              layout
+              transition={{ layout: { duration: layoutDuration / 1000, ease: "easeInOut" } }}
+              className="w-full rounded-2xl border border-white/12 bg-black/30 text-white/90 p-7 shadow backdrop-blur"
+            >
+              <p className="text-xs uppercase tracking-[0.15em] text-white/60 mb-3">
+                7-day outlook
+              </p>
                 <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-4">
                   {(weather.daily ?? [])
                     .slice(0, 7)
@@ -1460,7 +1515,7 @@ export default function WeatherClient() {
                       return (
                         <div
                           key={`${day.dt}-${idx}`}
-                          className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm"
+                          className="rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm shadow-sm"
                         >
                           <p className="font-semibold text-sm">{label}</p>
                           <div className="flex items-center gap-2 text-xs text-white/80">
@@ -1477,14 +1532,10 @@ export default function WeatherClient() {
                               </span>
                             )}
                           </div>
-                          <p className="text-xs flex items-center gap-1">
-                            <span className={tempColorClass(day.min != null ? Math.round(day.min) : null, units)}>
-                              {day.min != null ? Math.round(day.min) : "--"}°
-                            </span>
+                          <p className="text-xs flex items-center gap-1 justify-end text-white/80">
+                            <span>{day.min != null ? Math.round(day.min) : "--"}°</span>
                             <span className="text-white/60">/</span>
-                            <span className={tempColorClass(day.max != null ? Math.round(day.max) : null, units)}>
-                              {day.max != null ? Math.round(day.max) : "--"}°
-                            </span>
+                            <span>{day.max != null ? Math.round(day.max) : "--"}°</span>
                             <span className="text-white/60">{units === "imperial" ? "F" : "C"}</span>
                           </p>
                         </div>
@@ -1496,24 +1547,24 @@ export default function WeatherClient() {
               <motion.div
                 layout
                 transition={{ layout: { duration: layoutDuration / 1000, ease: "easeInOut" } }}
-                className="w-full rounded-2xl border border-white/15 bg-black/50 text-white p-5 shadow backdrop-blur space-y-3"
+                className="w-full rounded-2xl border border-white/12 bg-black/35 text-white p-5 shadow backdrop-blur space-y-3"
               >
-                <p className="text-xs uppercase tracking-[0.18em] text-white/60 mb-1">
+                  <p className="text-xs uppercase tracking-[0.18em] text-white/60 mb-1">
                   Outfit slots by day
                 </p>
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
                   {(weather.daily ?? []).slice(0, 7).map((day, idx) => {
                     const date = new Date(day.dt * 1000);
                     const label = formatDayLabel(date, idx);
                     const recs = recommendedByDay[idx] ?? [];
                     const renderCategory = (title: string, items: RenderCategoryItem[]) => (
                       <div className="space-y-1">
-                        <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-white/50">{title}</p>
+                        <p className="text-[10px] font-semibold uppercase tracking-[0.15em] text-white/50">{title}</p>
                         <div className="flex items-center gap-2 overflow-x-auto">
                           {items.length ? (
                             items.slice(0, 2).map(({ item, closest }) => (
                               <div key={`${title}-${item.id}`} className="flex items-center gap-2">
-                                <div className="h-5 px-1 rounded-full border border-white/15 bg-white/5 text-[11px] flex items-center gap-2 text-white/80">
+                                <div className="h-5 px-1 rounded-full border border-white/12 bg-white/5 text-[11px] flex items-center gap-2 text-white/85 shadow-[0_1px_3px_rgba(0,0,0,0.25)]">
                                   {item.image_url ? (
                                     <img
                                       src={item.image_url}
@@ -1524,8 +1575,11 @@ export default function WeatherClient() {
                                   <span className="line-clamp-1">{item.label}</span>
                                 </div>
                                 {closest ? (
-                                  <span className="ml-2 inline-flex items-center rounded-full px-2 py-0.5 text-[10px] border border-teal-300/60 bg-teal-500/20 text-teal-100">
-                                    closest match
+                                  <span
+                                    className="ml-2 inline-flex h-5 w-5 items-center justify-center rounded-full bg-emerald-500/18 border border-emerald-400/40 text-[11px] text-emerald-200 shadow-[0_0_8px_rgba(16,185,129,0.35)]"
+                                    title="Closest choice for this day"
+                                  >
+                                    ★
                                   </span>
                                 ) : null}
                               </div>
@@ -1544,23 +1598,33 @@ export default function WeatherClient() {
                       return [];
                     };
 
+                    const isToday = idx === 0;
                     return (
                       <motion.div
                         whileHover={{ y: -2, scale: 1.01 }}
                         transition={{ duration: 0.15 }}
                         key={`planner-${day.dt}-${idx}`}
-                        className={`rounded-2xl border p-3 space-y-2 ${
-                          idx === 0 ? "border-white/40 bg-white/10" : "border-white/10 bg-white/5"
+                        className={`rounded-2xl border px-4 py-3 space-y-2 ${
+                          isToday
+                            ? "border-white/28 bg-black/30 backdrop-blur shadow-[0_0_30px_rgba(0,0,0,0.45)]"
+                            : "border-white/15 bg-black/25"
                         }`}
                       >
-                        <div className={`flex items-center justify-between ${idx === 0 ? "text-base font-semibold" : "text-sm font-semibold"}`}>
-                          <span>{label}</span>
+                        <div className={`flex items-center justify-between ${isToday ? "text-sm font-semibold" : "text-[13px] font-semibold"}`}>
+                          <div className="flex items-center gap-2">
+                            <span>{label}</span>
+                            {isToday ? (
+                              <span className="rounded-full bg-white/15 px-2 py-0.5 text-[11px] text-white/80 border border-white/25">
+                                Today
+                              </span>
+                            ) : null}
+                          </div>
                           <span className="text-xs flex items-center gap-1">
-                            <span className={tempColorClass(day.min != null ? Math.round(day.min) : null, units)}>
+                            <span className={isToday ? tempColorClass(day.min != null ? Math.round(day.min) : null, units) : "text-white/80"}>
                               {day.min != null ? Math.round(day.min) : "--"}°
                             </span>
                             <span className="text-white/60">/</span>
-                            <span className={tempColorClass(day.max != null ? Math.round(day.max) : null, units)}>
+                            <span className={isToday ? tempColorClass(day.max != null ? Math.round(day.max) : null, units) : "text-white/80"}>
                               {day.max != null ? Math.round(day.max) : "--"}°
                             </span>
                           </span>
