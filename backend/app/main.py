@@ -7,6 +7,14 @@ from sentence_transformers import SentenceTransformer
 
 from app.schemas.weather import WeatherResponse
 from app.services.open_weather import fetch_weather, OpenWeatherError
+from app.services.outfit_langchain import (
+    ExplanationRequest,
+    ImageAnalysisRequest,
+    OutfitImageAnalysisDetails,
+    OutfitExplanationDetails,
+    analyze_outfit_image,
+    generate_outfit_explanation,
+)
 
 app = FastAPI()
 
@@ -37,6 +45,24 @@ async def embed(req: EmbedRequest):
     """
     emb = model.encode([req.text])[0].tolist()
     return {"embedding": emb}
+
+
+@app.post("/outfit/explain", response_model=OutfitExplanationDetails)
+async def explain_outfit(req: ExplanationRequest):
+    """
+    Generate a structured explanation for already-selected outfit items.
+    Retrieval and reranking happen before this endpoint is called.
+    """
+    return await generate_outfit_explanation(req)
+
+
+@app.post("/outfit/analyze-image", response_model=OutfitImageAnalysisDetails)
+async def analyze_outfit_image_endpoint(req: ImageAnalysisRequest):
+    """
+    Analyze a search-result product image and infer wardrobe weather tags.
+    The user still reviews and edits these tags before saving.
+    """
+    return await analyze_outfit_image(req)
 
 
 @app.get("/weather/openweather", response_model=WeatherResponse)

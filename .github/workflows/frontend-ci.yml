@@ -1,0 +1,7 @@
+on:
+  push:
+    paths:
+      - "weather-dress/**"
+  pull_request:
+    paths:
+      - "weather-dress/**"

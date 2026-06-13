@@ -7,7 +7,9 @@ import CLOUDS from "vanta/src/vanta.clouds";
 import { useSearchParams, useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import dynamic from "next/dynamic";
-import { supabase } from "@/src/app/lib/supabaseClient";
+import { supabase, supabaseConfigError } from "@/src/app/lib/supabaseClient";
+import { OutfitRecommendationGrid } from "./components/OutfitRecommendationGrid";
+import type { OutfitRecommendation } from "./types/recommendations";
 
 // ---------- TYPES ----------
 
@@ -60,7 +62,6 @@ type OutfitItem = {
   min_temp_c?: number | null;
   max_temp_c?: number | null;
 };
-type RenderCategoryItem = { item: OutfitItem; closest?: boolean };
 type OutfitSearchResult = {
   label: string;
   image_url?: string;
@@ -68,6 +69,32 @@ type OutfitSearchResult = {
   store_url?: string;
   description?: string | null;
   color?: string | null;
+};
+
+type OutfitImageAnalysis = {
+  category?: OutfitCategory | null;
+  label?: string | null;
+  description?: string | null;
+  color?: string | null;
+  brand?: string | null;
+  water_resistance?: "none" | "resistant" | "waterproof" | null;
+  wind_block?: "low" | "medium" | "high" | null;
+  breathability?: "low" | "medium" | "high" | null;
+  coverage_top?: "none" | "short_sleeve" | "long_sleeve" | "jacket" | null;
+  coverage_bottom?: "shorts" | "full_length" | null;
+  footwear_type?: "open" | "closed" | "boot" | null;
+  warmth_score?: number | null;
+  min_temp_c?: number | null;
+  max_temp_c?: number | null;
+  confidence?: number;
+  source?: "vision" | "fallback";
+};
+
+type SupabaseStorageError = {
+  message?: string;
+  details?: string | null;
+  hint?: string | null;
+  code?: string;
 };
 
 const tempColorClass = (temp: number | undefined | null, units: "imperial" | "metric") => {
@@ -79,6 +106,76 @@ const tempColorClass = (temp: number | undefined | null, units: "imperial" | "me
   if (f <= 85) return "text-amber-200";
   return "text-rose-300";
 };
+
+const STYLE_OPTIONS = ["casual", "athletic", "smart casual", "formal", "streetwear"];
+const OCCASION_OPTIONS = ["everyday", "class", "gym", "interview", "rain commute", "cold weather"];
+
+function displayChipLabel(value: string) {
+  return value
+    .split(" ")
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ");
+}
+
+function toCelsius(temp: number | null, units: "imperial" | "metric") {
+  if (temp == null || Number.isNaN(temp)) return null;
+  return units === "imperial" ? ((temp - 32) * 5) / 9 : temp;
+}
+
+function toMetersPerSecond(wind: number | null | undefined, units: "imperial" | "metric") {
+  if (wind == null || Number.isNaN(wind)) return null;
+  return units === "imperial" ? wind * 0.44704 : wind;
+}
+
+function isOneOf<T extends readonly string[]>(values: T, value: unknown): value is T[number] {
+  return typeof value === "string" && values.includes(value);
+}
+
+function clampRounded(value: unknown, min: number, max: number) {
+  const numericValue =
+    typeof value === "number"
+      ? value
+      : typeof value === "string"
+      ? Number(value)
+      : Number.NaN;
+  if (!Number.isFinite(numericValue)) return null;
+  return Math.min(max, Math.max(min, Math.round(numericValue)));
+}
+
+function supabaseStorageMessage(action: string, error?: SupabaseStorageError) {
+  if (supabaseConfigError) {
+    return `${supabaseConfigError} Add the keys to weather-dress/.env.local and restart Next.js.`;
+  }
+
+  const message = error?.message ?? "";
+  const diagnostic = `${message} ${error?.details ?? ""} ${error?.hint ?? ""}`.toLowerCase();
+
+  if (
+    diagnostic.includes("failed to fetch") ||
+    diagnostic.includes("enotfound") ||
+    diagnostic.includes("networkerror")
+  ) {
+    return "Wardrobe storage is unreachable. Check NEXT_PUBLIC_SUPABASE_URL, confirm the Supabase project is active, then restart Next.js.";
+  }
+
+  if (
+    diagnostic.includes("does not exist") ||
+    diagnostic.includes("schema cache") ||
+    diagnostic.includes("could not find")
+  ) {
+    return "Supabase is missing the outfit_items table. Run supabase/migrations/0001_outfit_items_and_match.sql against the project.";
+  }
+
+  if (
+    diagnostic.includes("permission denied") ||
+    diagnostic.includes("row-level security") ||
+    diagnostic.includes("rls")
+  ) {
+    return "Supabase rejected wardrobe access. Re-run the migration so anon/auth roles can read and manage outfit_items.";
+  }
+
+  return message ? `Could not ${action}: ${message}` : `Could not ${action}. Check Supabase configuration.`;
+}
 
 // ---------- BACKGROUND GRADIENT + VANTA CONFIG ----------
 
@@ -166,18 +263,15 @@ function cloudsOptionsForWeather(w: WeatherRes | null) {
 
 // ----------- HOOK HELPERS FOR SUPABASE OUTFIT STORAGE -----------
 async function fetchOutfits(userKey: string) {
+  if (!supabase) throw new Error(supabaseStorageMessage("load wardrobe"));
+
   const { data, error } = await supabase
     .from("outfit_items")
     .select("*")
     .eq("user_key", userKey)
     .order("created_at", { ascending: true });
   if (error) {
-    console.error("supabase fetchOutfits error", {
-      message: error.message,
-      details: error.details,
-      hint: error.hint,
-    });
-    throw error;
+    throw new Error(supabaseStorageMessage("load wardrobe", error));
   }
   return data;
 }
@@ -203,37 +297,25 @@ async function addOutfit(
     max_temp_c?: number | null;
   }
 ) {
+  if (!supabase) throw new Error(supabaseStorageMessage("save item"));
+
   const { data, error } = await supabase
     .from("outfit_items")
     .insert([{ user_key: userKey, category, label, ...(extras || {}) }])
     .select()
     .single();
   if (error) {
-    console.error(
-      "supabase addOutfit error",
-      {
-        message: error.message,
-        details: error.details,
-        hint: error.hint,
-        code: (error as any).code,
-      },
-      "raw:",
-      JSON.stringify(error, Object.getOwnPropertyNames(error), 2)
-    );
-    throw error;
+    throw new Error(supabaseStorageMessage("save item", error));
   }
   return data;
 }
 
 async function removeOutfit(id: string) {
+  if (!supabase) throw new Error(supabaseStorageMessage("remove item"));
+
   const { error } = await supabase.from("outfit_items").delete().eq("id", id);
   if (error) {
-    console.error("supabase removeOutfit error", {
-      message: error.message,
-      details: error.details,
-      hint: error.hint,
-    });
-    throw error;
+    throw new Error(supabaseStorageMessage("remove item", error));
   }
 }
 
@@ -370,6 +452,8 @@ export default function WeatherClient() {
   const [showDetailsModal, setShowDetailsModal] = useState(false);
   const [pendingItem, setPendingItem] = useState<OutfitSearchResult | null>(null);
   const [pendingCategory, setPendingCategory] = useState<OutfitCategory | null>(null);
+  const [pendingLabel, setPendingLabel] = useState("");
+  const [pendingBrand, setPendingBrand] = useState("");
   const [pendingDescription, setPendingDescription] = useState("");
   const [pendingWarmth, setPendingWarmth] = useState(5);
   const [pendingWater, setPendingWater] = useState<"none" | "resistant" | "waterproof">("none");
@@ -381,10 +465,16 @@ export default function WeatherClient() {
   const [pendingTempMin, setPendingTempMin] = useState(10);
   const [pendingTempMax, setPendingTempMax] = useState(20);
   const [pendingColor, setPendingColor] = useState("");
-  const [recommendedByDay, setRecommendedByDay] = useState<Record<number, OutfitItem[]>>({});
+  const [analyzingItemImage, setAnalyzingItemImage] = useState(false);
+  const [analysisMessage, setAnalysisMessage] = useState<string | null>(null);
+  const analysisRequestRef = useRef(0);
+  const [selectedStyle, setSelectedStyle] = useState("casual");
+  const [selectedOccasion, setSelectedOccasion] = useState("everyday");
+  const [recommendedByDay, setRecommendedByDay] = useState<Record<number, OutfitRecommendation>>({});
   const [recommending, setRecommending] = useState(false);
   const [reembedding, setReembedding] = useState(false);
   const [reembedMessage, setReembedMessage] = useState<string | null>(null);
+  const [wardrobeError, setWardrobeError] = useState<string | null>(null);
 
   const syncOutfitState = (rows: any[]) => {
     setUpperItems(
@@ -618,18 +708,21 @@ export default function WeatherClient() {
 
   // Fetch outfits from Supabase
   useEffect(() => {
-    if (!userKey) return;
+    if (!userKey || !showWeeklyPanel) return;
     fetchOutfits(userKey)
       .then((rows) => {
+        setWardrobeError(null);
         syncOutfitState(rows);
       })
-      .catch((err) => console.error("fetch outfits", err));
-  }, [userKey]);
+      .catch((err: Error) => setWardrobeError(err.message));
+  }, [userKey, showWeeklyPanel]);
 
   // Realtime updates for outfits (Supabase)
   useEffect(() => {
-    if (!userKey) return;
-    const channel = supabase
+    const supabaseClient = supabase;
+    if (!userKey || !showWeeklyPanel || !supabaseClient) return;
+
+    const channel = supabaseClient
       .channel("outfit-items-realtime")
       .on(
         "postgres_changes",
@@ -641,73 +734,67 @@ export default function WeatherClient() {
         },
         () => {
           fetchOutfits(userKey)
-            .then((rows) => syncOutfitState(rows))
-            .catch((err) => console.error("realtime fetch outfits", err));
+            .then((rows) => {
+              setWardrobeError(null);
+              syncOutfitState(rows);
+            })
+            .catch((err: Error) => setWardrobeError(err.message));
         }
       )
       .subscribe();
 
     return () => {
-      supabase.removeChannel(channel);
+      supabaseClient.removeChannel(channel);
     };
-  }, [userKey]);
+  }, [userKey, showWeeklyPanel]);
 
   // Fetch recommendations for the next 7 days when weekly panel opens
   useEffect(() => {
     const loadRecommendations = async () => {
-      if (!showWeeklyPanel || !weather?.daily?.length) return;
+      if (!showWeeklyPanel || !weather?.daily?.length || !userKey) return;
       setRecommending(true);
+      setRecommendedByDay({});
       try {
         const requests = weather.daily.slice(0, 7).map((day: any, idx: number) => {
-          const avgTemp =
+          const avgDisplayTemp =
             day?.temp && typeof day.temp === "object"
               ? (day.temp.min + day.temp.max) / 2
               : day?.min != null && day?.max != null
               ? (day.min + day.max) / 2
               : null;
+          const avgTempC = toCelsius(avgDisplayTemp, units);
           const description =
             day?.weather?.[0]?.description ??
             day?.summary ??
             weather.current?.description ??
             "weather-based outfit";
           const precip = day?.pop != null ? `${Math.round(day.pop * 100)}% precip` : undefined;
+          const wind = toMetersPerSecond(day?.wind_speed ?? weather.current?.wind_speed, units);
 
           return fetch("/api/outfits/recommend", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-              temp_c: avgTemp,
+              user_key: userKey,
+              temp_c: avgTempC,
               description,
               precip,
+              wind,
+              style: selectedStyle,
+              occasion: selectedOccasion,
             }),
           })
             .then((res) => res.json())
-            .then((res) => ({ idx, items: res.items || [] }))
-            .catch(() => ({ idx, items: [] }));
+            .then((res) => ({ idx, recommendation: res as OutfitRecommendation }))
+            .catch(() => ({ idx, recommendation: null }));
         });
 
         const results = await Promise.all(requests);
-        const mapped: Record<number, OutfitItem[]> = {};
-        results.forEach(({ idx, items }) => {
-          mapped[idx] = (items as OutfitItem[]).map((it: any) => ({
-            id: it.id ?? crypto.randomUUID(),
-            label: it.label ?? "Item",
-            category: it.category ?? null,
-            image_url: it.image_url ?? null,
-            brand: it.brand ?? null,
-            store_url: it.store_url ?? null,
-            description: it.description ?? null,
-            color: it.color ?? null,
-            warmth_score: it.warmth_score ?? null,
-            water_resistance: it.water_resistance ?? null,
-            wind_block: it.wind_block ?? null,
-            breathability: it.breathability ?? null,
-            coverage_top: it.coverage_top ?? null,
-            coverage_bottom: it.coverage_bottom ?? null,
-            footwear_type: it.footwear_type ?? null,
-            min_temp_c: it.min_temp_c ?? null,
-            max_temp_c: it.max_temp_c ?? null,
-          }));
+        const mapped: Record<number, OutfitRecommendation> = {};
+        results.forEach(({ idx, recommendation }) => {
+          if (recommendation?.outfit && recommendation?.alternatives) {
+            mapped[idx] = recommendation;
+          }
         });
         setRecommendedByDay(mapped);
       } finally {
@@ -716,7 +803,7 @@ export default function WeatherClient() {
     };
 
     loadRecommendations();
-  }, [showWeeklyPanel, weather]);
+  }, [showWeeklyPanel, weather, userKey, selectedStyle, selectedOccasion, units]);
 
   // Defer panel showing until layout animation finishes
   useEffect(() => {
@@ -782,7 +869,7 @@ export default function WeatherClient() {
           break;
       }
     } catch (err) {
-      console.error("remove outfit", err);
+      setWardrobeError(err instanceof Error ? err.message : "Unable to remove item.");
     }
   };
 
@@ -823,9 +910,15 @@ export default function WeatherClient() {
   };
 
   const handleSelectSearchResult = async (item: OutfitSearchResult) => {
-    if (!searchCategory) return;
-    setPendingCategory(searchCategory);
+    const selectedCategory = searchCategory;
+    if (!selectedCategory) return;
+    const requestId = analysisRequestRef.current + 1;
+    analysisRequestRef.current = requestId;
+
+    setPendingCategory(selectedCategory);
     setPendingItem(item);
+    setPendingLabel(item.label);
+    setPendingBrand(item.brand ?? "");
     setPendingDescription(item.description ?? "");
     setPendingColor(item.color ?? "");
     setPendingWarmth(5);
@@ -837,7 +930,90 @@ export default function WeatherClient() {
     setPendingFoot("closed");
     setPendingTempMin(10);
     setPendingTempMax(20);
+    setAnalyzingItemImage(false);
+    setAnalysisMessage(null);
     setShowDetailsModal(true);
+
+    if (!item.image_url) {
+      setAnalysisMessage("No product image available; default tags applied.");
+      return;
+    }
+
+    setAnalyzingItemImage(true);
+    try {
+      const res = await fetch("/api/outfits/analyze", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          image_url: item.image_url,
+          label: item.label,
+          description: item.description ?? null,
+          brand: item.brand ?? null,
+          category_hint: selectedCategory,
+        }),
+      });
+      const analysis = (await res.json()) as OutfitImageAnalysis & { error?: string };
+      if (!res.ok) throw new Error(analysis?.error || "Image analysis failed");
+      if (analysisRequestRef.current !== requestId) return;
+
+      if (analysis.label) setPendingLabel(analysis.label);
+      if (analysis.brand) setPendingBrand(analysis.brand);
+      let nextCategory = selectedCategory;
+      if (isOneOf(["upper", "lower", "accessories", "shoes"] as const, analysis.category)) {
+        nextCategory = analysis.category;
+        setPendingCategory(analysis.category);
+      }
+      if (analysis.description) setPendingDescription(analysis.description);
+      if (analysis.color) setPendingColor(analysis.color);
+      if (isOneOf(["none", "resistant", "waterproof"] as const, analysis.water_resistance)) {
+        setPendingWater(analysis.water_resistance);
+      }
+      if (isOneOf(["low", "medium", "high"] as const, analysis.wind_block)) {
+        setPendingWind(analysis.wind_block);
+      }
+      if (isOneOf(["low", "medium", "high"] as const, analysis.breathability)) {
+        setPendingBreath(analysis.breathability);
+      }
+      if (isOneOf(["none", "short_sleeve", "long_sleeve", "jacket"] as const, analysis.coverage_top)) {
+        setPendingTop(analysis.coverage_top);
+      }
+      if (isOneOf(["shorts", "full_length"] as const, analysis.coverage_bottom)) {
+        setPendingBottom(analysis.coverage_bottom);
+      }
+      if (isOneOf(["open", "closed", "boot"] as const, analysis.footwear_type)) {
+        setPendingFoot(analysis.footwear_type);
+      }
+
+      const warmth = clampRounded(analysis.warmth_score, 1, 10);
+      if (warmth != null) setPendingWarmth(warmth);
+
+      const minTemp = clampRounded(analysis.min_temp_c, -20, 50);
+      const maxTemp = clampRounded(analysis.max_temp_c, -20, 50);
+      if (minTemp != null || maxTemp != null) {
+        const nextMin = minTemp ?? 10;
+        const nextMax = maxTemp ?? 20;
+        setPendingTempMin(Math.min(nextMin, nextMax));
+        setPendingTempMax(Math.max(nextMin, nextMax));
+      }
+
+      const categoryNote =
+        nextCategory !== selectedCategory
+          ? ` Category changed to ${nextCategory}.`
+          : "";
+      setAnalysisMessage(
+        analysis.source === "vision"
+          ? `Image tags applied${categoryNote}`
+          : "Image analysis unavailable; default tags applied."
+      );
+    } catch (err) {
+      if (analysisRequestRef.current !== requestId) return;
+      console.error("analyze outfit image", err);
+      setAnalysisMessage("Image analysis unavailable; default tags applied.");
+    } finally {
+      if (analysisRequestRef.current === requestId) {
+        setAnalyzingItemImage(false);
+      }
+    }
   };
 
   const renderOutfitRow = (title: string, kind: OutfitCategory, items: OutfitItem[]) => (
@@ -886,10 +1062,15 @@ export default function WeatherClient() {
   );
 
   const handleReembedAll = async () => {
+    if (!userKey) return;
     setReembedding(true);
     setReembedMessage(null);
     try {
-      const res = await fetch("/api/outfits/reembed", { method: "POST" });
+      const res = await fetch("/api/outfits/reembed", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ user_key: userKey }),
+      });
       const js = await res.json();
       if (js?.message) setReembedMessage(js.message);
     } catch (err: any) {
@@ -1173,6 +1354,59 @@ export default function WeatherClient() {
                     <span className="text-[11px] text-white/70">{reembedMessage}</span>
                   )}
                 </div>
+                {wardrobeError && (
+                  <p className="rounded-lg border border-amber-300/25 bg-amber-500/10 px-3 py-2 text-xs text-amber-100">
+                    {wardrobeError}
+                  </p>
+                )}
+                <div className="space-y-3 rounded-xl border border-white/10 bg-white/[0.04] px-3 py-3">
+                  <div className="space-y-1.5">
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.15em] text-white/50">
+                      Style
+                    </p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {STYLE_OPTIONS.map((style) => {
+                        const active = selectedStyle === style;
+                        return (
+                          <button
+                            key={style}
+                            onClick={() => setSelectedStyle(style)}
+                            className={`rounded-full border px-2.5 py-1 text-[11px] transition ${
+                              active
+                                ? "border-white/45 bg-white/22 text-white"
+                                : "border-white/15 bg-black/15 text-white/65 hover:bg-white/10"
+                            }`}
+                          >
+                            {displayChipLabel(style)}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                  <div className="space-y-1.5">
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.15em] text-white/50">
+                      Occasion
+                    </p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {OCCASION_OPTIONS.map((occasion) => {
+                        const active = selectedOccasion === occasion;
+                        return (
+                          <button
+                            key={occasion}
+                            onClick={() => setSelectedOccasion(occasion)}
+                            className={`rounded-full border px-2.5 py-1 text-[11px] transition ${
+                              active
+                                ? "border-white/45 bg-white/22 text-white"
+                                : "border-white/15 bg-black/15 text-white/65 hover:bg-white/10"
+                            }`}
+                          >
+                            {displayChipLabel(occasion)}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
                 {outfitSections.map(({ title, kind, items }) => renderOutfitRow(title, kind, items))}
                 <div className="flex justify-end">
                   <button
@@ -1196,7 +1430,7 @@ export default function WeatherClient() {
               exit={{ opacity: 0 }}
             >
               <div className="absolute inset-0 bg-black/60 backdrop-blur" onClick={() => setShowDetailsModal(false)} />
-              <div className="relative z-10 w-full max-w-2xl rounded-2xl border border-white/20 bg-black/85 text-white shadow-2xl p-6 space-y-4">
+              <div className="relative z-10 max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl border border-white/20 bg-black/85 text-white shadow-2xl p-6 space-y-4">
                 <div className="flex items-center justify-between">
                   <h3 className="text-lg font-semibold">Item details</h3>
                   <button onClick={() => setShowDetailsModal(false)} className="text-sm text-white/70 hover:text-white">
@@ -1204,11 +1438,61 @@ export default function WeatherClient() {
                   </button>
                 </div>
 
-                <p className="text-sm text-white/80">
-                  {pendingItem?.label} {pendingCategory ? `→ ${pendingCategory}` : ""}
-                </p>
+                <div className="flex gap-3 rounded-xl border border-white/10 bg-white/[0.04] p-3">
+                  {pendingItem?.image_url && (
+                    <img
+                      src={pendingItem.image_url}
+                      alt={pendingLabel || pendingItem.label}
+                      className="h-16 w-16 shrink-0 rounded-lg border border-white/10 bg-white/10 object-contain"
+                    />
+                  )}
+                  <div className="min-w-0 space-y-1">
+                    <p className="truncate text-sm text-white/85">
+                      {pendingLabel || pendingItem?.label} {pendingCategory ? `-> ${pendingCategory}` : ""}
+                    </p>
+                    <p className="text-xs text-white/60">
+                      {analyzingItemImage
+                        ? "Analyzing search image..."
+                        : analysisMessage ?? "Review the tags before saving."}
+                    </p>
+                  </div>
+                </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
+                  <label className="space-y-1">
+                    <span className="text-white/70 text-xs">Label</span>
+                    <input
+                      value={pendingLabel}
+                      onChange={(e) => setPendingLabel(e.target.value)}
+                      placeholder="e.g., Black rain jacket"
+                      className="w-full rounded-lg bg-white/10 border border-white/20 px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-white/30"
+                    />
+                  </label>
+
+                  <label className="space-y-1">
+                    <span className="text-white/70 text-xs">Category</span>
+                    <select
+                      value={pendingCategory ?? "upper"}
+                      onChange={(e) => setPendingCategory(e.target.value as OutfitCategory)}
+                      className="w-full rounded-lg bg-white/10 border border-white/20 px-3 py-2 text-sm text-white"
+                    >
+                      <option value="upper">Upper</option>
+                      <option value="lower">Lower</option>
+                      <option value="accessories">Accessories</option>
+                      <option value="shoes">Shoes</option>
+                    </select>
+                  </label>
+
+                  <label className="space-y-1">
+                    <span className="text-white/70 text-xs">Brand / source</span>
+                    <input
+                      value={pendingBrand}
+                      onChange={(e) => setPendingBrand(e.target.value)}
+                      placeholder="Optional"
+                      className="w-full rounded-lg bg-white/10 border border-white/20 px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-white/30"
+                    />
+                  </label>
+
                   <label className="space-y-1">
                     <span className="text-white/70 text-xs">Color / variant</span>
                     <input
@@ -1392,20 +1676,24 @@ export default function WeatherClient() {
                   </button>
                   <button
                     onClick={async () => {
-                      if (!pendingItem || !pendingCategory || !userKey) return;
+                      if (!pendingItem || !pendingCategory || !userKey || analyzingItemImage) return;
+                      const category = pendingCategory;
+                      const itemLabel = pendingLabel.trim() || pendingItem.label;
+                      const itemBrand = pendingBrand.trim() || null;
                       try {
                         // Build text and fetch embedding
                         const embedPayload: Partial<OutfitItem> = {
-                          label: pendingItem.label,
+                          label: itemLabel,
                           description: pendingDescription || pendingItem.description || null,
                           color: pendingColor || null,
-                          brand: pendingItem.brand ?? null,
+                          brand: itemBrand,
                           water_resistance: pendingWater,
                           wind_block: pendingWind,
                           breathability: pendingBreath,
                           coverage_top: pendingTop,
                           coverage_bottom: pendingBottom,
                           footwear_type: pendingFoot,
+                          warmth_score: pendingWarmth,
                           min_temp_c: pendingTempMin,
                           max_temp_c: pendingTempMax,
                         };
@@ -1414,7 +1702,7 @@ export default function WeatherClient() {
                           const res = await fetch("/api/outfits/embed", {
                             method: "POST",
                             headers: { "Content-Type": "application/json" },
-                            body: JSON.stringify({ text: buildItemText(embedPayload, pendingCategory) }),
+                            body: JSON.stringify({ text: buildItemText(embedPayload, category) }),
                           });
                           const js = await res.json();
                           if (Array.isArray(js?.embedding)) embedding = js.embedding;
@@ -1422,9 +1710,9 @@ export default function WeatherClient() {
                           console.error("embedding fetch failed", err);
                         }
 
-                        const row = await addOutfit(userKey, pendingCategory, pendingItem.label, {
+                        const row = await addOutfit(userKey, category, itemLabel, {
                           image_url: pendingItem.image_url,
-                          brand: pendingItem.brand,
+                          brand: itemBrand ?? undefined,
                           store_url: pendingItem.store_url,
                           description: pendingDescription || pendingItem.description || null,
                           color: pendingColor || null,
@@ -1442,9 +1730,9 @@ export default function WeatherClient() {
                         const entry: OutfitItem = {
                           id: row.id,
                           label: row.label,
-                          category: pendingCategory,
+                          category,
                           image_url: (row as any).image_url ?? pendingItem.image_url ?? null,
-                          brand: (row as any).brand ?? pendingItem.brand ?? null,
+                          brand: (row as any).brand ?? itemBrand,
                           store_url: (row as any).store_url ?? pendingItem.store_url ?? null,
                           description: (row as any).description ?? pendingDescription ?? pendingItem.description ?? null,
                           color: (row as any).color ?? pendingColor ?? null,
@@ -1458,7 +1746,7 @@ export default function WeatherClient() {
                           min_temp_c: (row as any).min_temp_c ?? pendingTempMin,
                           max_temp_c: (row as any).max_temp_c ?? pendingTempMax,
                         };
-                        switch (pendingCategory) {
+                        switch (category) {
                           case "upper":
                             setUpperItems((items) => [...items, entry]);
                             break;
@@ -1475,13 +1763,15 @@ export default function WeatherClient() {
                         setShowDetailsModal(false);
                         setShowSearchModal(false);
                       } catch (err) {
-                        console.error("add outfit", err);
-                        setSearchError("Unable to save item. Check Supabase table/policies.");
+                        const message = err instanceof Error ? err.message : "Unable to save item.";
+                        setWardrobeError(message);
+                        setSearchError(message);
                       }
                     }}
-                    className="px-4 py-2 rounded-lg bg-white/15 border border-white/30 text-sm hover:bg-white/25 transition"
+                    disabled={analyzingItemImage || !pendingItem || !pendingCategory || !userKey}
+                    className="px-4 py-2 rounded-lg bg-white/15 border border-white/30 text-sm hover:bg-white/25 transition disabled:cursor-not-allowed disabled:opacity-50"
                   >
-                    Save item
+                    {analyzingItemImage ? "Analyzing..." : "Save item"}
                   </button>
                 </div>
               </div>
@@ -1556,48 +1846,7 @@ export default function WeatherClient() {
                   {(weather.daily ?? []).slice(0, 7).map((day, idx) => {
                     const date = new Date(day.dt * 1000);
                     const label = formatDayLabel(date, idx);
-                    const recs = recommendedByDay[idx] ?? [];
-                    const renderCategory = (title: string, items: RenderCategoryItem[]) => (
-                      <div className="space-y-1">
-                        <p className="text-[10px] font-semibold uppercase tracking-[0.15em] text-white/50">{title}</p>
-                        <div className="flex items-center gap-2 overflow-x-auto">
-                          {items.length ? (
-                            items.slice(0, 2).map(({ item, closest }) => (
-                              <div key={`${title}-${item.id}`} className="flex items-center gap-2">
-                                <div className="h-5 px-1 rounded-full border border-white/12 bg-white/5 text-[11px] flex items-center gap-2 text-white/85 shadow-[0_1px_3px_rgba(0,0,0,0.25)]">
-                                  {item.image_url ? (
-                                    <img
-                                      src={item.image_url}
-                                      alt={item.label}
-                                      className="h-5 w-5 rounded-full object-cover"
-                                    />
-                                  ) : null}
-                                  <span className="line-clamp-1">{item.label}</span>
-                                </div>
-                                {closest ? (
-                                  <span
-                                    className="ml-2 inline-flex h-5 w-5 items-center justify-center rounded-full bg-emerald-500/18 border border-emerald-400/40 text-[11px] text-emerald-200 shadow-[0_0_8px_rgba(16,185,129,0.35)]"
-                                    title="Closest choice for this day"
-                                  >
-                                    ★
-                                  </span>
-                                ) : null}
-                              </div>
-                            ))
-                          ) : (
-                            <span className="text-[11px] text-white/50">Add from wardrobe</span>
-                          )}
-                        </div>
-                      </div>
-                    );
-
-                    const pickForCategory = (cat: OutfitCategory, fallback: OutfitItem[]): RenderCategoryItem[] => {
-                      const matches = recs.filter((r) => r.category === cat);
-                      if (matches.length) return matches.slice(0, 1).map((m) => ({ item: m }));
-                      if (fallback.length) return [{ item: fallback[0], closest: true }];
-                      return [];
-                    };
-
+                    const recommendation = recommendedByDay[idx] ?? null;
                     const isToday = idx === 0;
                     return (
                       <motion.div
@@ -1629,13 +1878,10 @@ export default function WeatherClient() {
                             </span>
                           </span>
                         </div>
-                        <div className="space-y-2">
-                          {renderCategory("Upper", pickForCategory("upper", upperItems))}
-                          {renderCategory("Lower", pickForCategory("lower", lowerItems))}
-                          {renderCategory("Accessories", pickForCategory("accessories", accessoriesItems))}
-                          {renderCategory("Shoes", pickForCategory("shoes", shoesItems))}
-                        </div>
-                        {recommending && <p className="text-[10px] text-white/50">Updating recommendations…</p>}
+                        <OutfitRecommendationGrid
+                          recommendation={recommendation}
+                          loading={recommending}
+                        />
                       </motion.div>
                     );
                   })}

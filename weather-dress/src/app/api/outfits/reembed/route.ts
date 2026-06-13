@@ -62,6 +62,12 @@ async function embedText(text: string) {
 
 export async function POST(_req: NextRequest) {
   try {
+    const body = await _req.json().catch(() => ({}));
+    const userKey = typeof body?.user_key === "string" ? body.user_key.trim() : "";
+    if (!userKey) {
+      return NextResponse.json({ error: "Missing user_key" }, { status: 400 });
+    }
+
     if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
       return NextResponse.json(
         { error: "Missing SUPABASE_SERVICE_ROLE_KEY on the server for re-embedding." },
@@ -78,7 +84,7 @@ export async function POST(_req: NextRequest) {
       .select(
         "id,label,description,category,color,brand,water_resistance,wind_block,breathability,coverage_top,coverage_bottom,footwear_type,warmth_score,min_temp_c,max_temp_c"
       )
-      .limit(500);
+      .eq("user_key", userKey);
 
     if (error) {
       console.error("reembed select error", error);
@@ -95,7 +101,8 @@ export async function POST(_req: NextRequest) {
         const { error: upErr } = await supabase
           .from("outfit_items")
           .update({ embedding })
-          .eq("id", row.id);
+          .eq("id", row.id)
+          .eq("user_key", userKey);
         if (!upErr) success += 1;
         else {
           failed += 1;
@@ -108,7 +115,12 @@ export async function POST(_req: NextRequest) {
     }
 
     return NextResponse.json(
-      { message: `Re-embedded ${success}/${items.length} items`, failed },
+      {
+        message: `Re-embedded ${success}/${items.length} items`,
+        success,
+        failed,
+        total: items.length,
+      },
       { status: 200 }
     );
   } catch (err: any) {

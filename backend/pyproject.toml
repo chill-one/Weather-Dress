@@ -9,6 +9,10 @@ dependencies = [
   "httpx>=0.27",
   "python-dotenv",
   "pydantic>=2.7",
+  "langchain",
+  "langchain-core",
+  "langchain-openai",
+  "openai",
   "redis>=5",
   "supabase",
   "asyncpg",
@@ -19,6 +23,7 @@ dependencies = [
   "numpy",
   "pandas",
   "joblib",
+  "sentence-transformers",
 ]
 
 [project.optional-dependencies]

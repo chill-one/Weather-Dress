@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 const HF_API_TOKEN = process.env.HF_API_TOKEN;
-const HF_MODEL = process.env.HF_MODEL_ID || process.env.HF_FASHION_MODEL || "sentence-transformers/all-MiniLM-L6-v2";
+const HF_MODEL = process.env.HF_MODEL_ID || "sentence-transformers/all-MiniLM-L6-v2";
 const HF_FALLBACK_MODEL = "sentence-transformers/all-MiniLM-L6-v2";
 const LOCAL_EMBED_URL = process.env.EMBEDDING_API_URL || "http://backend:8000/embed";
 
@@ -55,15 +55,12 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Missing text" }, { status: 400 });
     }
 
-    let embedding: number[] | null = null;
-    if (LOCAL_EMBED_URL) {
-      try {
-        embedding = await embedViaLocal(text);
-      } catch (err) {
-        console.error("Local embed failed, falling back to HF", err);
-      }
-    }
-    if (!embedding) {
+    let embedding: number[];
+    try {
+      embedding = await embedViaLocal(text);
+    } catch (err) {
+      if (!HF_API_TOKEN) throw err;
+      console.error("Local embed failed, falling back to HF", err);
       embedding = await embedViaHF(text);
     }
 

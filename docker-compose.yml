@@ -8,9 +8,18 @@ services:
       - "8000:8000"
     env_file:
       - ./backend/.env
+    environment:
+      OPENAI_API_KEY: "${OPENAI_API_KEY:-}"
+      GPT_key: "${GPT_key:-}"
+      OPENAI_MODEL: "${OPENAI_MODEL:-}"
+      OPENAI_VISION_MODEL: "${OPENAI_VISION_MODEL:-}"
+      GPT_MODEL: "${GPT_MODEL:-}"
+      LANGCHAIN_TRACING_V2: "${LANGCHAIN_TRACING_V2:-false}"
+      LANGCHAIN_API_KEY: "${LANGCHAIN_API_KEY:-}"
+      LANGCHAIN_PROJECT: "${LANGCHAIN_PROJECT:-weather-dress}"
     volumes:
       - ./backend:/app
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000
 
   frontend:
     build:
@@ -28,6 +37,8 @@ services:
       NEXT_PUBLIC_SUPABASE_URL: "${NEXT_PUBLIC_SUPABASE_URL}"
       NEXT_PUBLIC_SUPABASE_ANON_KEY: "${NEXT_PUBLIC_SUPABASE_ANON_KEY}"
       SERPAPI_API_KEY: "${SERPAPI_API_KEY}"
+      HF_API_TOKEN: "${HF_API_TOKEN:-}"
+      HF_MODEL_ID: "${HF_MODEL_ID:-sentence-transformers/all-MiniLM-L6-v2}"
       EMBEDDING_API_URL: "http://backend:8000/embed"
       SUPABASE_SERVICE_ROLE_KEY: "${SUPABASE_SERVICE_ROLE_KEY}"
     depends_on:
